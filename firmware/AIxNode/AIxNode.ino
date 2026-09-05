@@ -95,6 +95,14 @@
 // 按键长短按阈值
 #define BTN_LONG_MS  800
 
+// ---- 0.6 GPS 定位模块 (穿戴端, 可选) ------------------------------------------
+// 常见模块: NEO-6M / ATGM336H(北斗+GPS) / BN-220, 均为 3.3V UART, 9600 波特 NMEA 输出
+// 只读定位时 GPS_TX 可悬空; GPS_RX 必须接模块的 TX
+#define GPS_ENABLE  1      // 1=启用 GPS(穿戴端), 0=未接 GPS
+#define GPS_RX_PIN  18     // ESP32-S3 接 GPS 模块的 TX
+#define GPS_TX_PIN  17     // ESP32-S3 接 GPS 模块的 RX(仅接收可悬空)
+#define GPS_BAUD    9600
+
 // ============================================================================
 //  1. 头文件与库
 // ============================================================================
@@ -102,6 +110,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <math.h>
+#include <HardwareSerial.h>
 #include <SPI.h>
 #include <WiFi.h>
 #include <esp_now.h>
@@ -149,6 +158,8 @@ typedef struct __attribute__((packed)) {
   uint16_t seq;              // 包序号 (发送方每次发包自增, 用于去重)
   uint8_t  hops;             // 已转发跳数
   uint32_t ts_ms;            // 事件时间戳(ms, 使用开机毫秒; 无 RTC 所以非墙上时钟)
+  int32_t  lat_e7;           // 纬度 * 1e7 (0 = 无定位)
+  int32_t  lon_e7;           // 经度 * 1e7 (0 = 无定位)
   uint8_t  crc;              // CRC8 校验(对整个包其余字节)
 } AlertPacket;
 // 注意: 包内容改动后 sizeof 变化, 接收端按 sizeof 校验长度, 无需额外字段
@@ -171,6 +182,8 @@ typedef struct {
   uint8_t  risk;
   uint8_t  survival;
   uint8_t  hazard;
+  int32_t  lat_e7;           // 邻居上报的纬度 * 1e7
+  int32_t  lon_e7;           // 邻居上报的经度 * 1e7
 } RemoteNode;
 
 // ============================================================================
@@ -210,6 +223,19 @@ uint32_t  btnDownAt    = 0;
 // 串口行缓冲
 char      cmdLine[64];
 uint8_t   cmdIdx = 0;
+
+// GPS 定位状态
+typedef struct {
+  bool     valid;
+  double   lat, lon;
+  uint8_t  sats;
+  uint32_t lastFixMs;
+  bool     fixLogged;
+} GpsState;
+GpsState gps = {false, 0.0, 0.0, 0, 0, false};
+#if GPS_ENABLE
+HardwareSerial gpsSerial(1);      // GPS 使用 UART1
+#endif
 
 // ============================================================================
 //  5. 小工具: CRC8 与按键
@@ -343,6 +369,8 @@ void buildPacket(AlertPacket &p) {
   p.seq      = txSeq++;
   p.hops     = 0;
   p.ts_ms    = (uint32_t)millis();
+  p.lat_e7   = gps.valid ? (int32_t)(gps.lat * 1e7) : 0;
+  p.lon_e7   = gps.valid ? (int32_t)(gps.lon * 1e7) : 0;
   p.crc      = crc8((const uint8_t *)&p, sizeof(p) - 1);
 }
 
@@ -394,6 +422,8 @@ void handleReceived(const AlertPacket &p) {
   r.risk         = p.risk;
   r.survival     = p.survival;
   r.hazard       = p.hazard;
+  r.lat_e7       = p.lat_e7;
+  r.lon_e7       = p.lon_e7;
 
   // 中继节点: 把高危/普通状态再广播一次 (hops+1, 去重保证不风暴)
 #if NODE_ROLE == ROLE_B_RELAY
@@ -486,6 +516,8 @@ void printInfo() {
   Serial.printf("[INFO] id=%s role=%c  local hazard=%u level=%u risk=%u survival=%u%%\r\n",
                 nodeId, roleChar(), localState.hazard, localState.level,
                 localState.risk, localState.survival);
+  Serial.printf("[INFO]   gps %s lat=%.5f lon=%.5f sats=%u\r\n",
+                gps.valid ? "FIX" : "NOFIX", gps.lat, gps.lon, gps.sats);
   for (int i = 0; i < MAX_REMOTES; i++) {
     if (!remotes[i].valid) continue;
     uint32_t ago = millis() - remotes[i].last_seen_ms;
@@ -720,6 +752,83 @@ uint8_t routeSurvival(const int *path, int len) {
 }
 
 // ============================================================================
+//  8.6 GPS 定位: 串口读 NMEA 并解析 (穿戴端真实坐标)
+// ============================================================================
+#if GPS_ENABLE
+
+// NMEA 经纬度 ddmm.mmmm -> 十进制度 (S/W 取负)
+static double nmeaToDeg(const char *val, char dir) {
+  if (!val || !val[0]) return 0.0;
+  double v = atof(val);
+  double deg = floor(v / 100.0);
+  double min = v - deg * 100.0;
+  double d = deg + min / 60.0;
+  if (dir == 'S' || dir == 'W') d = -d;
+  return d;
+}
+
+// 解析一条 NMEA 语句(先校验和)。RMC 取有效标志+经纬度, GGA 取卫星数
+static void parseNmea(char *line) {
+  if (line[0] != '$') return;
+  char *star = strchr(line, '*');
+  if (!star) return;
+  uint8_t ck = 0;
+  for (char *p = line + 1; p < star; p++) ck ^= (uint8_t)*p;
+  if (ck != (uint8_t)strtol(star + 1, NULL, 16)) return;   // 校验和不对, 丢弃
+
+  // 按逗号切字段
+  char *f[16];
+  int n = 0;
+  char *tok = line;
+  f[n++] = tok;
+  for (; *tok && n < 16; tok++)
+    if (*tok == ',') { *tok = 0; f[n++] = tok + 1; }
+
+  const char *id = f[0];
+  size_t idLen = strlen(id);
+  const char *type = (idLen >= 3) ? id + idLen - 3 : "";   // "RMC" / "GGA"
+
+  if (strcmp(type, "RMC") == 0 && n >= 7) {
+    // $--RMC,time,status(A/V),lat,N/S,lon,E/W,...
+    if (f[2][0] == 'A') {
+      double la = nmeaToDeg(f[3], f[4][0]);
+      double lo = nmeaToDeg(f[5], f[6][0]);
+      if (la != 0.0 || lo != 0.0) {
+        gps.lat = la; gps.lon = lo; gps.valid = true;
+        gps.lastFixMs = millis();
+        if (!gps.fixLogged) {
+          gps.fixLogged = true;
+          Serial.printf("[GPS] fix acquired lat=%.5f lon=%.5f\r\n", gps.lat, gps.lon);
+        }
+      }
+    }
+  } else if (strcmp(type, "GGA") == 0 && n >= 8) {
+    // $--GGA,time,lat,N/S,lon,E/W,quality,sats,...
+    gps.sats = (uint8_t)atoi(f[7]);
+  }
+}
+
+// 从 GPS 串口读入并喂给解析器
+void updateGps() {
+  static char line[96];
+  static uint8_t idx = 0;
+  while (gpsSerial.available()) {
+    char c = (char)gpsSerial.read();
+    if (c == '\n') {
+      line[idx] = 0;
+      parseNmea(line);
+      idx = 0;
+    } else if (c != '\r' && idx < sizeof(line) - 1) {
+      line[idx++] = c;
+    }
+  }
+}
+
+#else
+void updateGps() {}
+#endif
+
+// ============================================================================
 //  9. 模块4: OLED 界面 (128x64, U8g2 全缓冲)
 // ============================================================================
 
@@ -846,7 +955,7 @@ void drawUi(const NodeState &eff, bool isRemote, bool invert) {
 
   // ---- 顶部状态栏: 节点ID + 角色 | 邻居数 + 等级 ----
   char topL[24], topR[24];
-  snprintf(topL, sizeof(topL), "%c %s", roleChar(), nodeId);
+  snprintf(topL, sizeof(topL), "%c %s S%u", roleChar(), nodeId, gps.sats);
   snprintf(topR, sizeof(topR), "M%d%s L%d", aliveNeighbors(),
            isRemote ? " RX" : "", (int)eff.level);
   u8g2.setFont(u8g2_font_6x10_tf);
@@ -936,6 +1045,12 @@ void setup() {
   Serial.println();
   Serial.printf("AIxNode boot  id=%s role=%c\r\n", nodeId, roleChar());
 
+  // --- GPS 初始化 (穿戴端定位) ---
+#if GPS_ENABLE
+  gpsSerial.begin(GPS_BAUD, SERIAL_8N1, GPS_RX_PIN, GPS_TX_PIN);
+  Serial.printf("[GPS] init rx=%d tx=%d baud=%d\r\n", GPS_RX_PIN, GPS_TX_PIN, GPS_BAUD);
+#endif
+
   // --- OLED 初始化 (4线SPI: 先初始化 SPI 总线再 begin) ---
   SPI.begin(OLED_SCK, OLED_MISO, OLED_MOSI);        // CS/DC/RES 由 u8g2 构造器管理
   if (!u8g2.begin()) {
@@ -967,6 +1082,7 @@ void loop() {
 
   readSerial();
   updateButton();
+  updateGps();          // 读 GPS 串口并解析
 
   // 取出接收回调缓存的数据
   if (g_rx_ready) {
