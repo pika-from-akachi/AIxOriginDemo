@@ -34,6 +34,7 @@ OLED_CS_GPIO = 10
 OLED_DC_GPIO = 7
 OLED_RES_GPIO = 8
 OLED_RETRY_MS = 5_000
+OLED_HIGH_WATER_FLASH_MS = 350
 BUZZER_GPIO = 6
 HIGH_WATER_TONE_HZ = 1_600
 HIGH_BEEP_ON_MS = 90
@@ -115,6 +116,9 @@ class BleWaterNode:
         self.ble.active(True)
         self._last_oled_probe_ms = time.ticks_ms()
         self.oled = self._open_oled()
+        self._oled_flash_enabled = False
+        self._oled_inverted = False
+        self._next_oled_flash_ms = time.ticks_ms()
         self.last = None
 
     def _load_calibration(self):
@@ -176,6 +180,32 @@ class BleWaterNode:
         if time.ticks_diff(now, self._last_oled_probe_ms) >= OLED_RETRY_MS:
             self._last_oled_probe_ms = now
             self.oled = self._open_oled()
+
+    def _set_oled_flash(self, percent):
+        enabled = percent is not None and percent > 60
+        if enabled == self._oled_flash_enabled:
+            return
+        self._oled_flash_enabled = enabled
+        self._next_oled_flash_ms = time.ticks_ms()
+        if not enabled:
+            self._oled_inverted = False
+            if self.oled is not None:
+                self.oled.invert(0)
+
+    def _service_oled_flash(self):
+        if not self._oled_flash_enabled or self.oled is None:
+            return
+        now = time.ticks_ms()
+        if time.ticks_diff(now, self._next_oled_flash_ms) < 0:
+            return
+        self._oled_inverted = not self._oled_inverted
+        try:
+            self.oled.invert(1 if self._oled_inverted else 0)
+        except Exception as exc:
+            print("OLED_FLASH_DISABLED", repr(exc))
+            self.oled = None
+            self._oled_inverted = False
+        self._next_oled_flash_ms = time.ticks_add(now, OLED_HIGH_WATER_FLASH_MS)
 
     def sample(self):
         samples = []
@@ -277,6 +307,7 @@ class BleWaterNode:
         reading["packet"] = packet
         self.sequence = (self.sequence + 1) & 0xFFFF
         self.last = reading
+        self._set_oled_flash(reading["percent"])
         self._draw(reading)
         print(
             "BLE_WATER seq=%d raw=%d mv=%d level=%s alarm=%s noise=%d flags=0x%02x adv=%s"
@@ -342,6 +373,7 @@ class BleWaterNode:
             deadline = time.ticks_add(start, UPDATE_INTERVAL_MS)
             while time.ticks_diff(deadline, time.ticks_ms()) > 0:
                 self._service_buzzer()
+                self._service_oled_flash()
                 time.sleep_ms(20)
 
 
