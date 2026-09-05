@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>AIxOrigin · 自然灾害应急自组网 — 离网避险闭环</title>
-<meta name="description" content="AIxOrigin：基于 ESP32-S3 ESP-NOW Mesh + Android App 的离网应急避险系统。灾害输入 → 边缘决策引擎 → 无路由器广播 → OLED / App 实时逃生指引。" />
+<meta name="description" content="AIxOrigin：基于 ESP32-S3 ESP-NOW Mesh + Android App 的离网应急避险系统。灾害输入 → 边缘决策引擎 → 无路由器广播 → 监测节点 OLED 就地告警 / App 实时逃生指引。" />
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%234cd9f2' stroke-width='1.6'%3E%3Ccircle cx='12' cy='12' r='2.6' fill='%234cd9f2'/%3E%3Cpath d='M12 5V3M19 7l1.6-1.2M20 12h2M5 7L3.4 5.8M4 12H2M12 19v2' stroke-linecap='round'/%3E%3C/svg%3E" />
 <link rel="stylesheet" href="assets/css/style.css" />
 <noscript><style>.reveal{opacity:1;transform:none}.hero-title .w{transform:none;opacity:1;animation:none}</style></noscript>
@@ -37,7 +37,7 @@
     <a href="#chain">核心链路</a>
     <a href="#engine">决策引擎</a>
     <a href="#mesh">离网 Mesh</a>
-    <a href="#terminal">随身终端</a>
+    <a href="#terminal">节点 OLED</a>
     <a href="#sensor">水位节点</a>
     <a href="#app">Android App</a>
     <a class="nav-gh" href="https://github.com/pika-from-akachi/AIxOriginDemo" target="_blank" rel="noopener">
@@ -54,7 +54,7 @@
   <a href="#chain" data-label="核心链路"><i></i></a>
   <a href="#engine" data-label="决策引擎"><i></i></a>
   <a href="#mesh" data-label="离网 Mesh"><i></i></a>
-  <a href="#terminal" data-label="随身终端"><i></i></a>
+  <a href="#terminal" data-label="节点 OLED"><i></i></a>
   <a href="#sensor" data-label="水位节点"><i></i></a>
   <a href="#app" data-label="Android App"><i></i></a>
   <a href="#build" data-label="快速开始"><i></i></a>
@@ -77,9 +77,9 @@
       </h1>
 
       <p class="hero-sub reveal">
-        AIxOrigin 是一套面向自然灾害的<strong>离网应急避险闭环</strong>：节点感知灾害 →
+        AIxOrigin 是一套面向自然灾害的<strong>离网应急避险闭环</strong>：监测节点感知灾害 →
         边缘决策引擎计算危险指数与存活率 → <strong>无路由器</strong> ESP-NOW 自组网广播 →
-        OLED / Android 实时给出逃生指引。两天黑客松，跑通真实硬件。
+        节点 OLED 就地告警 / Android 实时给出逃生指引。两天黑客松，跑通真实硬件。
       </p>
 
       <div class="hero-cta reveal">
@@ -138,7 +138,7 @@
           <div class="fs-chip">STEP 4 · GUIDE</div>
           <div class="fs-icon">➤</div>
           <h3>实时逃生指引</h3>
-          <p>OLED 大字等级与方向箭头，App 全屏告警、振动与语音导航 —— 人机都在同一张网里。</p>
+          <p>监测节点 OLED 就地亮起等级与撤离方向，App 全屏告警、振动与语音导航 —— 现场与手机同步响应。</p>
         </div>
       </div>
 
@@ -231,7 +231,7 @@
       <header class="sec-head reveal">
         <p class="kicker">ESP-NOW MESH · 03</p>
         <h2>没有路由器，网络反而更顽强</h2>
-        <p class="sec-sub">ESP-NOW 让每一块板子既是终端、又是中继。拖动下面的节点看看报文如何跳转扩散。</p>
+        <p class="sec-sub">ESP-NOW 让每一块板子既是端点、又是中继。拖动下面的节点看看报文如何跳转扩散。</p>
       </header>
 
       <div class="mesh-layout">
@@ -240,7 +240,7 @@
           <div class="mesh-legend">
             <span><i class="dot sent"></i>哨兵 Node_A</span>
             <span><i class="dot relay"></i>中继 Node_B</span>
-            <span><i class="dot term"></i>随身终端 Node_C</span>
+            <span><i class="dot term"></i>监测显示 Node_C</span>
             <span><i class="dot phone"></i>App / 网关</span>
           </div>
         </div>
@@ -268,21 +268,21 @@
           <div class="role-cards">
             <div class="role reveal"><span class="role-tag r1">ROLE 1</span><h4>哨兵 · 触发端</h4><p>本地模拟灾害、广播、接收、显示，Node_A</p></div>
             <div class="role reveal"><span class="role-tag r2">ROLE 2</span><h4>指挥 · 中继</h4><p>转发报文扩展覆盖，Node_B</p></div>
-            <div class="role reveal"><span class="role-tag r3">ROLE 3</span><h4>随身逃生终端</h4><p>接收广播、刷新逃生界面，Node_C</p></div>
+            <div class="role reveal"><span class="role-tag r3">ROLE 3</span><h4>监测显示节点</h4><p>固定部署，接收广播并在本地 OLED 显示险情、就地告警，Node_C</p></div>
           </div>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- ================= 随身终端 OLED ================= -->
+  <!-- ================= 节点 OLED · 就地告警 ================= -->
   <section class="panel terminal" id="terminal">
     <div class="wrap split rev">
       <div class="split-copy">
         <header class="sec-head left reveal">
-          <p class="kicker">WEARABLE TERMINAL · 04</p>
-          <h2>挂在胸前的“最后一屏”</h2>
-          <p class="sec-sub">128×64 单色 OLED，黑白屏也能分清 绿 / 黄 / 红 —— 亮度、反白与闪烁节奏就是语言。</p>
+          <p class="kicker">NODE OLED · 04</p>
+          <h2>监测节点的“就地告警屏”</h2>
+          <p class="sec-sub">人只带手机；这块 128×64 单色 OLED 装在监测节点上 —— 亮度、反白与闪烁节奏，在黑白屏上分得清 绿 / 黄 / 红。</p>
         </header>
 
         <div class="state-switch reveal" role="group" aria-label="切换 OLED 演示状态">
@@ -292,15 +292,15 @@
         </div>
 
         <ul class="term-points">
-          <li class="reveal">大字危险等级 + 自绘大数字存活率，一眼读懂</li>
-          <li class="reveal">逃生导航：脉冲方向箭头 · 下一跳 · 剩余距离 · 路线存活率</li>
+          <li class="reveal">大字危险等级 + 自绘大数字存活率 + 动画指数条，现场一眼读懂</li>
           <li class="reveal">危险时整屏反白 350ms 闪烁，可同步外接告警灯 / 蜂鸣器</li>
-          <li class="reveal">外接 GPS(UART NMEA) 解析真实坐标，随 ESP-NOW 报文广播</li>
+          <li class="reveal">Mesh 中继的远端险情也会就地亮起，让告警覆盖节点周边</li>
+          <li class="reveal">三态屏保 安全 / 预警 / 危险 可切换，纯黑白也能表达色彩语义</li>
         </ul>
 
-        <div class="gps-chip reveal">
-          <span class="gps-ping"></span>
-          <div><b>卫星定位</b><small>GPS 模块 · 串口 NMEA · 自动上报坐标</small></div>
+        <div class="alarm-chip reveal">
+          <span class="alarm-ping"></span>
+          <div><b>就地告警</b><small>整屏反白 350ms · 可外接告警灯 / 蜂鸣器同步</small></div>
         </div>
       </div>
 
@@ -443,7 +443,7 @@
         </div>
         <div class="b-card reveal">
           <div class="b-card-head"><span class="b-idx">02</span><h3>PlatformIO</h3></div>
-          <p>VS Code + PlatformIO 打开仓库根目录，编译默认 <code>Node_A</code> 角色；切换注释的 <code>nodeB</code> / <code>nodeC</code> env 可烧录中继与终端。</p>
+          <p>VS Code + PlatformIO 打开仓库根目录，编译默认 <code>Node_A</code> 角色；切换注释的 <code>nodeB</code> / <code>nodeC</code> env 可烧录中继与监测显示节点。</p>
           <pre><code>pio run -t upload</code></pre>
         </div>
         <div class="b-card reveal">

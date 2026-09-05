@@ -194,7 +194,7 @@
   }
 
   /* ---------------------------------------------------------------
-   * 5. Interactive OLED terminal demo
+   * 5. Interactive OLED demo — on-monitor-node local status/alarm
    * ------------------------------------------------------------- */
   function initOLED() {
     var device = $('#oledDevice');
@@ -414,8 +414,8 @@
       { x: .14, y: .58, role: 'sent', label: '哨兵', homeX: .14, homeY: .58 },
       { x: .40, y: .22, role: 'relay', label: '中继', homeX: .40, homeY: .22 },
       { x: .40, y: .88, role: 'relay', label: '中继', homeX: .40, homeY: .88 },
-      { x: .70, y: .24, role: 'term', label: '终端', homeX: .70, homeY: .24 },
-      { x: .72, y: .84, role: 'term', label: '终端', homeX: .72, homeY: .84 },
+      { x: .70, y: .24, role: 'term', label: '显示', homeX: .70, homeY: .24 },
+      { x: .72, y: .84, role: 'term', label: '显示', homeX: .72, homeY: .84 },
       { x: .93, y: .54, role: 'phone', label: 'App', homeX: .93, homeY: .54 }
     ];
     // undirected adjacency (index pairs). Last type 'bridge' = BLE/UDP to App.

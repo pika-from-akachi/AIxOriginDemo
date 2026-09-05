@@ -392,15 +392,15 @@ section{scroll-margin-top:0}
   background:linear-gradient(90deg,var(--cyan),var(--blue));
 }
 .term-points li b{color:var(--text)}
-.gps-chip{
+.alarm-chip{
   display:inline-flex;gap:14px;align-items:center;padding:14px 20px;border-radius:16px;
-  border:1px solid rgba(58,224,161,.35);background:rgba(58,224,161,.06);
+  border:1px solid rgba(255,92,107,.38);background:rgba(255,77,94,.06);
 }
-.gps-ping{width:12px;height:12px;border-radius:50%;background:var(--green);position:relative;flex:0 0 auto}
-.gps-ping::after{content:"";position:absolute;inset:-5px;border-radius:50%;border:1px solid var(--green);animation:ring 1.6s infinite}
+.alarm-ping{width:12px;height:12px;border-radius:50%;background:#ff5c6b;position:relative;flex:0 0 auto}
+.alarm-ping::after{content:"";position:absolute;inset:-5px;border-radius:50%;border:1px solid rgba(255,77,94,.9);animation:ring 1.6s infinite}
 @keyframes ring{0%{transform:scale(.5);opacity:.9}100%{transform:scale(1.6);opacity:0}}
-.gps-chip b{display:block;font-size:14.5px}
-.gps-chip small{font-family:var(--font-mono);color:var(--muted);font-size:11.5px}
+.alarm-chip b{display:block;font-size:14.5px}
+.alarm-chip small{font-family:var(--font-mono);color:var(--muted);font-size:11.5px}
 
 /* OLED device */
 .oled-scene{display:flex;flex-direction:column;align-items:center;gap:16px}
