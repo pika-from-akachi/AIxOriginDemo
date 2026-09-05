@@ -3,11 +3,17 @@
     <color name="white">#FFFFFF</color>
     <color name="black">#000000</color>
 
-    <!-- 安全 / 预警 / 危险 主题色 -->
-    <color name="aix_green">#2E7D32</color>
-    <color name="aix_yellow">#F9A825</color>
-    <color name="aix_red">#C62828</color>
-    <color name="aix_red_dark">#8E0000</color>
+    <!-- 风险等级主题色（深色底上的亮色变体） -->
+    <color name="aix_green">#4CAF50</color>
+    <color name="aix_yellow">#FFC107</color>
+    <color name="aix_red">#F44336</color>
+    <color name="aix_red_dark">#8B0000</color>
+
+    <!-- 深色表面 / 文本 -->
+    <color name="surface_dark">#1E1E24</color>
+    <color name="text_primary">#FFFFFF</color>
+    <color name="text_secondary">#A6A6AE</color>
+    <color name="glass_dark">#E61A1A1A</color>
 
     <color name="ic_launcher_background">#1B3B2B</color>
 </resources>

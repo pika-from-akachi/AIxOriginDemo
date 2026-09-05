@@ -52,18 +52,31 @@ class MapController(private val map: AMap) {
         map.uiSettings.isZoomControlsEnabled = false
         map.uiSettings.isCompassEnabled = true
         map.uiSettings.isScaleControlsEnabled = true
-        map.mapType = AMap.MAP_TYPE_NORMAL
+        map.mapType = AMap.MAP_TYPE_NIGHT
     }
 
     fun setSatellite(enabled: Boolean) {
         satellite = enabled
-        map.mapType = if (enabled) AMap.MAP_TYPE_SATELLITE else AMap.MAP_TYPE_NORMAL
+        map.mapType = if (enabled) AMap.MAP_TYPE_SATELLITE else AMap.MAP_TYPE_NIGHT
     }
 
     /** 长按地图 —— 用于设定“集合点/避难点” */
     fun setOnMapLongClick(handler: (GeoPoint) -> Unit) {
         map.setOnMapLongClickListener { latLng ->
             handler(GeoPoint(latLng.latitude, latLng.longitude))
+        }
+    }
+
+    /** 点击避难点标记 —— 用于移除（回调传入 shelter id） */
+    fun setOnShelterClick(handler: (String) -> Unit) {
+        map.setOnMarkerClickListener { marker ->
+            val tag = marker.getObject() as? String
+            if (tag != null && tag.startsWith("shelter:")) {
+                handler(tag.removePrefix("shelter:"))
+                true
+            } else {
+                false
+            }
         }
     }
 

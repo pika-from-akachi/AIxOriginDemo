@@ -3,6 +3,7 @@ package com.aix.origin.app
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
+import android.content.res.ColorStateList
 import android.os.Build
 import android.os.Bundle
 import android.os.VibrationEffect
@@ -38,7 +39,6 @@ import com.aix.origin.app.model.MeshNode
 import com.aix.origin.app.model.RiskReport
 import com.aix.origin.app.model.Shelter
 import com.amap.api.maps.MapView
-import com.google.android.material.floatingactionbutton.FloatingActionButton
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -61,7 +61,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var topSurvival: TextView
     private lateinit var txtSummary: TextView
     private lateinit var txtGuidance: TextView
-    private lateinit var fabSos: FloatingActionButton
+    private lateinit var fabSos: Button
+    private lateinit var statusDot: View
     private lateinit var alertOverlay: FrameLayout
     private lateinit var alertText: TextView
 
@@ -78,6 +79,7 @@ class MainActivity : AppCompatActivity() {
     private val hazards = ArrayList<HazardZone>()
     private val nodes = HashMap<String, MeshNode>()
     private val shelters = ArrayList<Shelter>()
+    private var shelterSeq = 0
     private var lastFix: LocationFix? = null
     private var currentRoute: EvacRoute? = null
     private var lastPlanPos: GeoPoint? = null
@@ -108,6 +110,7 @@ class MainActivity : AppCompatActivity() {
         txtSummary = findViewById(R.id.txt_summary)
         txtGuidance = findViewById(R.id.txt_guidance)
         fabSos = findViewById(R.id.fab_sos)
+        statusDot = findViewById(R.id.status_dot)
         alertOverlay = findViewById(R.id.alert_overlay)
         alertText = findViewById(R.id.alert_text)
         val btnDemo = findViewById<Button>(R.id.btn_demo_hazard)
@@ -165,6 +168,7 @@ class MainActivity : AppCompatActivity() {
         val map = mapView.map ?: return null
         val c = MapController(map).also { controller = it }
         c.setOnMapLongClick { p -> setShelterAt(p) }
+        c.setOnShelterClick { id -> removeShelter(id) }
         // 初次进图，先落在中国区便于演示（等定位后再跟随用户）
         c.focusOn(DEFAULT_POS, 14f)
         return c
@@ -269,13 +273,13 @@ class MainActivity : AppCompatActivity() {
 
         // 顶栏存活率
         topSurvival.text = getString(R.string.survival_label, report.survival)
-        topSurvival.setTextColor(
-            when {
-                report.alertLevel == AlertLevel.LEVEL_2 -> ContextCompat.getColor(this, R.color.aix_red)
-                report.alertLevel == AlertLevel.LEVEL_1 -> ContextCompat.getColor(this, R.color.aix_yellow)
-                else -> ContextCompat.getColor(this, R.color.aix_green)
-            }
-        )
+        val riskColor = when {
+            report.alertLevel == AlertLevel.LEVEL_2 -> ContextCompat.getColor(this, R.color.aix_red)
+            report.alertLevel == AlertLevel.LEVEL_1 -> ContextCompat.getColor(this, R.color.aix_yellow)
+            else -> ContextCompat.getColor(this, R.color.aix_green)
+        }
+        topSurvival.setTextColor(riskColor)
+        statusDot.backgroundTintList = ColorStateList.valueOf(riskColor)
 
         // 底部简报
         val summary = describeReport(report)
@@ -446,12 +450,23 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setShelterAt(p: GeoPoint) {
-        val id = "SHELTER-${shelters.size + 1}"
-        shelters.add(Shelter(id = id, name = "集合点${shelters.size + 1}", position = p, capacity = 0))
+        shelterSeq++
+        val id = "SHELTER-$shelterSeq"
+        shelters.add(Shelter(id = id, name = "集合点$shelterSeq", position = p, capacity = 0))
         controller?.updateShelters(shelters)
         toast("集合点已设定，将优先绕开高危区导航")
         lastPlanPos = null
         currentRoute = null
+        evaluateRisk()
+    }
+
+    /** 移除避难点（点一下地图上的绿色避难点标记即可） */
+    private fun removeShelter(id: String) {
+        shelters.removeAll { it.id == id }
+        controller?.updateShelters(shelters)
+        lastPlanPos = null
+        currentRoute = null
+        toast("集合点已移除")
         evaluateRisk()
     }
 

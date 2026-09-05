@@ -5,6 +5,9 @@
         <item name="colorPrimaryVariant">@color/aix_green</item>
         <item name="colorOnPrimary">@color/white</item>
         <item name="colorSecondary">@color/aix_red</item>
-        <item name="android:statusBarColor">#66000000</item>
+        <!-- 全屏夜间地图：状态栏透明，图标用白色 -->
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowBackground">@color/black</item>
     </style>
 </resources>

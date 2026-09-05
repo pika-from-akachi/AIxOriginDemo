@@ -1,89 +1,105 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/black">
 
-    <!-- 高德地图主视图 (约占全屏 80% 以上) -->
+    <!-- 高德地图主视图 -->
     <com.amap.api.maps.MapView
         android:id="@+id/map_view"
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
-    <!-- 顶栏：离网状态 + 综合存活率 -->
+    <!-- 顶栏：风险状态灯 + 综合存活率（玻璃质感） -->
     <LinearLayout
         android:id="@+id/top_bar"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_gravity="top"
-        android:orientation="horizontal"
-        android:padding="10dp">
+        android:padding="12dp">
 
         <LinearLayout
-            android:layout_width="0dp"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
             android:background="@drawable/bg_chip"
-            android:gravity="center_vertical"
+            android:elevation="4dp"
             android:orientation="vertical"
-            android:padding="10dp">
+            android:paddingLeft="14dp"
+            android:paddingTop="10dp"
+            android:paddingRight="14dp"
+            android:paddingBottom="10dp">
 
-            <TextView
-                android:id="@+id/top_status"
+            <LinearLayout
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:maxLines="1"
-                android:text="@string/status_default"
-                android:textColor="@color/white"
-                android:textSize="12sp" />
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <View
+                    android:id="@+id/status_dot"
+                    android:layout_width="8dp"
+                    android:layout_height="8dp"
+                    android:background="@drawable/bg_dot" />
+
+                <TextView
+                    android:id="@+id/top_status"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="6dp"
+                    android:maxLines="1"
+                    android:text="@string/status_default"
+                    android:textColor="#CCFFFFFF"
+                    android:textSize="12sp" />
+            </LinearLayout>
 
             <TextView
                 android:id="@+id/top_survival"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="2dp"
-                android:textStyle="bold"
+                android:layout_marginTop="3dp"
                 android:textColor="@color/white"
-                android:textSize="20sp"
-                tools:text="SURVIVAL 85%"
-                xmlns:tools="http://schemas.android.com/tools" />
+                android:textSize="22sp"
+                android:textStyle="bold"
+                tools:text="SURVIVAL 85%" />
         </LinearLayout>
     </LinearLayout>
 
-    <!-- 底栏：灾情简报 + 逃生指令 -->
+    <!-- 底栏：灾情简报 + 逃生指令 + 操作按钮 -->
     <LinearLayout
         android:id="@+id/bottom_card"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom"
         android:background="@drawable/bg_card"
+        android:elevation="8dp"
         android:orientation="vertical"
-        android:padding="12dp">
+        android:padding="16dp">
 
         <TextView
             android:id="@+id/txt_summary"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="区域正常 · 请保持警惕"
-            android:textColor="@color/black"
-            android:textSize="15sp"
+            android:textColor="@color/text_primary"
+            android:textSize="16sp"
             android:textStyle="bold" />
 
         <TextView
             android:id="@+id/txt_guidance"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
+            android:layout_marginTop="5dp"
             android:maxLines="3"
             android:text="@string/hint_long_press"
-            android:textColor="#444444"
+            android:textColor="@color/text_secondary"
             android:textSize="13sp" />
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
+            android:layout_marginTop="12dp"
             android:orientation="horizontal">
 
             <Button
@@ -93,26 +109,26 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:text="@string/btn_demo_hazard"
-                android:textSize="13sp" />
+                android:textSize="14sp" />
 
             <Space
                 android:layout_width="10dp"
                 android:layout_height="1dp" />
+
+            <Button
+                android:id="@+id/fab_sos"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:backgroundTint="@color/aix_red"
+                android:minWidth="96dp"
+                android:text="@string/sos"
+                android:textColor="@color/white"
+                android:textSize="15sp"
+                android:textStyle="bold" />
         </LinearLayout>
     </LinearLayout>
 
-    <!-- SOS 悬浮按钮 -->
-    <com.google.android.material.floatingactionbutton.FloatingActionButton
-        android:id="@+id/fab_sos"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_gravity="bottom|end"
-        android:layout_margin="20dp"
-        android:contentDescription="@string/sos"
-        android:src="@drawable/ic_sos"
-        app:backgroundTint="@color/aix_red" />
-
-    <!-- 全屏紧急告警浮层 (收到 Level2 或进入危险区时显示) -->
+    <!-- 全屏紧急告警浮层（Level2 或进入危险区时显示） -->
     <FrameLayout
         android:id="@+id/alert_overlay"
         android:layout_width="match_parent"
