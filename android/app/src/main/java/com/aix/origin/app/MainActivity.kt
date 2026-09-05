@@ -620,7 +620,8 @@ class MainActivity : AppCompatActivity() {
     /** 水位检测节点广播 → 生成/更新 FLOOD 灾情区（水位越高等级越高） */
     private fun onWaterReading(r: WaterBleScanner.WaterReading) {
         val percent = r.percent
-        val detected = r.waterDetected || (percent != null && percent > 5)
+        // 水位百分比 ≥20% 判定为黄色预警；≥60% 为红色高危
+        val detected = percent != null && percent >= 20
         val zoneId = "HZ-WATER-${r.nodeId}"
 
         if (!detected) {
