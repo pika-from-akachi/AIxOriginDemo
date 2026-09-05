@@ -2,6 +2,7 @@ package com.aix.origin.app
 
 import android.Manifest
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.ColorStateList
 import android.os.Build
@@ -23,6 +24,7 @@ import androidx.lifecycle.lifecycleScope
 import com.aix.origin.app.comm.BleMeshClient
 import com.aix.origin.app.comm.GatewayCodec
 import com.aix.origin.app.comm.GatewayParser
+import com.aix.origin.app.comm.WaterAlertService
 import com.aix.origin.app.comm.WaterBleScanner
 import com.aix.origin.app.comm.WifiUdpBridge
 import com.aix.origin.app.engine.EvacRouter
@@ -208,6 +210,11 @@ class MainActivity : AppCompatActivity() {
                     add(Manifest.permission.BLUETOOTH_SCAN)
                 }
             }
+            if (Build.VERSION.SDK_INT >= 33) {
+                if (!hasPermission(Manifest.permission.POST_NOTIFICATIONS)) {
+                    add(Manifest.permission.POST_NOTIFICATIONS)
+                }
+            }
         }
         if (needed.isNotEmpty()) {
             permLauncher.launch(needed.toTypedArray())
@@ -261,6 +268,13 @@ class MainActivity : AppCompatActivity() {
         waterScanner.onStatus = { s -> runOnUiThread { logStatus(s) } }
         if (hasBluetoothPermission()) {
             waterScanner.start()
+        }
+
+        // ---- 后台水位监测前台服务（锁屏/后台也能收警报并自动拉起应用） ----
+        try {
+            startForegroundService(Intent(this, WaterAlertService::class.java))
+        } catch (e: Exception) {
+            logStatus("后台监测服务启动失败: ${e.message}")
         }
 
         // ---- WiFi UDP 网桥 ----
@@ -322,6 +336,9 @@ class MainActivity : AppCompatActivity() {
             updateDangerBanner(report)
             if (!alarmAcknowledged) showAlarm(report)
             maybeAutoAiPlan()
+        } else if (report.alertLevel == AlertLevel.LEVEL_1) {
+            hideAlarm()
+            maybeAutoAiPlan() // 黄色预警也触发 AI 建议
         } else {
             hideAlarm()
         }
@@ -583,7 +600,6 @@ class MainActivity : AppCompatActivity() {
             lastPlanPos = null // 强制重算
             currentRoute = null
             controller?.clearRoute()
-            txtAiAdvice.visibility = View.GONE
         }
     }
 

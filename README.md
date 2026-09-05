@@ -15,12 +15,12 @@
 
 | 端 | 技术栈 |
 |---|---|
-| **固件** [`firmware/AIxNode`](firmware/AIxNode) | ESP32-S3 · ESP-NOW mesh · U8g2 OLED(SPI) · 外接 GPS(UART NMEA) |
-| **水位检测节点** [`firmware/WaterSensorNode`](firmware/WaterSensorNode/README.md) | MicroPython · GPIO5 ADC1 · SPI OLED（SSD1309）· 自适应滤波与干湿标定 |
-| **App** [`android/`](android/README.md) | Kotlin / JDK 17 · 高德 3D 地图 + 定位 · BLE(Nordic UART) / WiFi UDP · 自研 A* 导航 · DeepSeek LLM 逃生规划 |
+| **固件** [`firmware/AIxNode`](firmware/AIxNode) | ESP32-S3 · ESP-NOW mesh · U8g2 OLED(SPI) |
+| **水位检测节点** [`firmware/WaterSensorNode`](firmware/WaterSensorNode/README.md) | MicroPython · GPIO5 ADC1 · SPI OLED（SSD1309）· BLE 广播上报 · 自适应滤波与干湿标定 |
+| **App** [`android/`](android/README.md) | Kotlin / JDK 17 · 高德 3D 地图 + 定位 · BLE(Nordic UART / 水位广播) / WiFi UDP · 高德步行路线 · DeepSeek LLM 逃生规划 |
 | **文档** [`docs/`](docs) | 接线 · 演示脚本 · 验收对照 |
 
-固件侧即 PRD 中的**“第一个检测节点”**（哨兵 / 终端复合为主，也支持中继、随身终端两种角色）。
+固件侧即 PRD 中的**“第一个检测节点”**（哨兵 / 触发端为主，也支持中继角色）。
 
 ## 目录结构
 
@@ -46,7 +46,6 @@ AIxOriginDemo/
 | ② 边缘决策引擎 | 危险指数 0–100 + 存活率分级(L0=95% / L1=70% / L2=25%) | 每次状态变化自动重算 |
 | ③ ESP-NOW 自组网 | 定长结构体广播(含 CRC8/序号去重/中继转发)，不依赖路由器 | 状态变更立即发 + 1s 心跳 |
 | ④ OLED 交互 | U8g2 128x64：状态栏 + 大字等级 + 存活率 + 逃生导航(方向箭头/下一跳/剩余距离/路线存活率) | 高危整屏反白闪烁 + 可选告警灯 |
-| ⑤ 穿戴端定位 | 外接 GPS 模块(串口 NMEA)解析真实坐标，随 ESP-NOW 报文广播 | 定位后自动上报 |
 
 > Android App 的功能说明见 [`android/README.md`](android/README.md)。
 
@@ -60,13 +59,12 @@ AIxOriginDemo/
 Android App 直接扫描接收并映射为「积水(FLOOD)」灾情预警（详见 [android/README.md](android/README.md)）。
 已完成干燥与 **1cm** 浸水验证，计划的 **3cm** 标定尚待实测。
 
-## 三种角色（同一份固件，编译期切换）
+## 两种角色（同一份固件，编译期切换）
 
 | 值 | 角色 | 说明 | 默认节点 ID |
 |---|---|---|---|
-| `1` | **哨兵/触发端(终端复合)** ← 本次主交付 | 本地模拟灾害、广播、接收、显示 | `Node_A` |
+| `1` | **哨兵/触发端** ← 本次主交付 | 本地模拟灾害、广播、接收、显示 | `Node_A` |
 | `2` | 指挥/中继节点 | 转发收到的报文(hops+1)，扩展覆盖 | `Node_B` |
-| `3` | 随身逃生终端 | 主要接收广播、刷新逃生界面 | `Node_C` |
 
 Arduino IDE 用户直接改 `AIxNode.ino` 顶部 `NODE_ROLE`；PlatformIO 用户见下文。
 
@@ -114,9 +112,6 @@ pio device monitor -b 115200
 | `BTN_PIN` | `0` | 板载 Boot 键(低有效) |
 | `ALARM_PIN` | `-1` | 可选外接告警 LED/蜂鸣器引脚 |
 | `ESPNOW_CHANNEL` | `1` | 所有节点必须相同 |
-| `GPS_ENABLE` | `1` | 1=启用 GPS(穿戴端) / 0=不接 |
-| `GPS_RX_PIN` / `GPS_TX_PIN` | `18` / `17` | GPS 模块 UART 引脚（RX 接模块 TX） |
-| `GPS_BAUD` | `9600` | GPS 串口波特率 |
 
 ## 串口命令（115200）
 
@@ -126,7 +121,7 @@ lvl <0|1|2>                直接设等级
 hazard <none|quake|rain|mud> [intensity] [level]
 int <0-100>                设强度并重算危险指数/存活率
 send                       立即广播当前状态
-info                       打印本机与邻居状态(含 GPS 坐标)
+info                       打印本机与邻居状态
 help                       命令帮助
 ```
 
@@ -134,7 +129,7 @@ help                       命令帮助
 
 ```
 ┌──────────────────────────────┐
-│ A Node_A S8     M2 RX L2     │  ← 顶部: 角色+ID+卫星数 | 邻居数+是否RX远端+等级
+│ A Node_A       M2 RX L2     │  ← 顶部: 角色+ID | 邻居数+是否RX远端+等级
 ├──────────────────────────────┤
 │ DANGER            SURVIVAL   │  ← 左: 大字危险等级;  右: 存活率(自绘大数字)
 │ MUDSLIDE ▓▓▓ 97     25 %     │     左: 灾害类型 + 危险指数动画条 + 数值
