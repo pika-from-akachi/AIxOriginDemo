@@ -23,6 +23,7 @@ import androidx.lifecycle.lifecycleScope
 import com.aix.origin.app.comm.BleMeshClient
 import com.aix.origin.app.comm.GatewayCodec
 import com.aix.origin.app.comm.GatewayParser
+import com.aix.origin.app.comm.WaterBleScanner
 import com.aix.origin.app.comm.WifiUdpBridge
 import com.aix.origin.app.engine.EvacRouter
 import com.aix.origin.app.engine.Geo
@@ -75,9 +76,10 @@ class MainActivity : AppCompatActivity() {
     // ---- 服务 ----
     private var controller: MapController? = null
     private val locationEngine by lazy { LocationEngine(this) }
-    private val amapRoutePlanner by lazy { AmapRoutePlanner(this) }
+    private val amapRoutePlanner by lazy { AmapRoutePlanner() }
     private var ble: BleMeshClient? = null
     private var udp: WifiUdpBridge? = null
+    private val waterScanner by lazy { WaterBleScanner(this) }
     private var tts: TextToSpeech? = null
     private var blinkJob: Job? = null
     private var routeJob: Job? = null
@@ -171,6 +173,7 @@ class MainActivity : AppCompatActivity() {
         llmJob?.cancel()
         ble?.stop()
         udp?.stop()
+        waterScanner.stop()
         locationEngine.stop()
         locationEngine.destroy()
         tts?.stop()
@@ -236,6 +239,7 @@ class MainActivity : AppCompatActivity() {
         if (hasLocationPermission()) {
             locationEngine.onFix = { fix -> runOnUiThread { onLocationFix(fix) } }
             locationEngine.onStatus = { s -> runOnUiThread { logStatus(s) } }
+            locationEngine.onHeading = { h -> runOnUiThread { controller?.updateSelfBearing(h) } }
             locationEngine.start()
         }
 
@@ -250,6 +254,13 @@ class MainActivity : AppCompatActivity() {
             topStatus.text = getString(R.string.status_scanning)
         } else {
             logStatus("无蓝牙权限，仅 WiFi 网桥")
+        }
+
+        // ---- 水位检测节点 BLE 广播扫描（不连接，只收广播） ----
+        waterScanner.onWater = { r -> runOnUiThread { onWaterReading(r) } }
+        waterScanner.onStatus = { s -> runOnUiThread { logStatus(s) } }
+        if (hasBluetoothPermission()) {
+            waterScanner.start()
         }
 
         // ---- WiFi UDP 网桥 ----
@@ -604,6 +615,40 @@ class MainActivity : AppCompatActivity() {
         toast("已在前方模拟 Lv2 塌方")
         evaluateRisk()
         speak("前方道路塌陷，请立即撤离")
+    }
+
+    /** 水位检测节点广播 → 生成/更新 FLOOD 灾情区（水位越高等级越高） */
+    private fun onWaterReading(r: WaterBleScanner.WaterReading) {
+        val percent = r.percent
+        val detected = r.waterDetected || (percent != null && percent > 5)
+        val zoneId = "HZ-WATER-${r.nodeId}"
+
+        if (!detected) {
+            val removed = hazards.removeAll { it.id == zoneId }
+            if (removed) {
+                renderHazards()
+                evaluateRisk()
+                logStatus("水位节点${r.nodeId} 水退，灾情解除")
+            }
+            return
+        }
+
+        val level = if (percent != null && percent >= 60) AlertLevel.LEVEL_2 else AlertLevel.LEVEL_1
+        val center = lastFix?.point ?: DEFAULT_POS
+        val polygon = ArrayList<GeoPoint>()
+        repeat(8) { k -> polygon.add(Geo.pointAt(center, 60.0, k * 45.0)) }
+        val zone = HazardZone(
+            id = zoneId,
+            kind = HazardKind.FLOOD,
+            level = level,
+            polygon = polygon,
+            source = HazardSource.BLE,
+        )
+        val idx = hazards.indexOfFirst { it.id == zoneId }
+        if (idx >= 0) hazards[idx] = zone else hazards.add(zone)
+        renderHazards()
+        logStatus("水位节点${r.nodeId}: ${percent ?: "?"}% ${if (level == AlertLevel.LEVEL_2) "高危积水" else "检测到水"}")
+        evaluateRisk()
     }
 
     private fun setShelterAt(p: GeoPoint) {

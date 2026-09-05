@@ -164,7 +164,12 @@ class MapController(private val map: AMap) {
             )
         }
         selfMarker?.position = point.toLatLng()
-        selfMarker?.setRotateAngle(-bearing)
+        selfMarker?.setRotateAngle(bearing)
+    }
+
+    /** 仅更新自身箭头的朝向（传感器航向实时刷新，不改变位置） */
+    fun updateSelfBearing(bearing: Float) {
+        selfMarker?.setRotateAngle(bearing)
     }
 
     // ---------------- 逃生路线 + 动态箭头 ----------------

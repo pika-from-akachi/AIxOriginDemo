@@ -56,8 +56,9 @@ AIxOriginDemo/
 水位 OUT 使用 GPIO5，OLED 使用 SDA9/SCL8。包括已上板运行的 MicroPython 程序、
 标定工具、接地对照、滤波仿真及 Arduino 串口参考源码。
 
-这是一套独立的传感器验证固件，尚未接入 AIxNode 的 ESP-NOW/Android 数据链路；
-原有 `pio run` 构建入口保持不变。已完成干燥与 **1cm** 浸水验证，计划的 **3cm** 标定尚待实测。
+该节点通过 **BLE 广播**（设备名 `AIxWtr`，Service Data UUID `0xFFF0`）每 250ms 上报水位，
+Android App 直接扫描接收并映射为「积水(FLOOD)」灾情预警（详见 [android/README.md](android/README.md)）。
+已完成干燥与 **1cm** 浸水验证，计划的 **3cm** 标定尚待实测。
 
 ## 三种角色（同一份固件，编译期切换）
 

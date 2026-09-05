@@ -29,6 +29,8 @@ android {
         // DeepSeek LLM：Key 与模型 ID 经 BuildConfig 注入（默认空 Key = 未启用）
         buildConfigField "String", "DEEPSEEK_API_KEY", "\"${project.findProperty("deepseekKey") ?: localProps.getProperty("deepseekKey") ?: ""}\""
         buildConfigField "String", "DEEPSEEK_MODEL", "\"${project.findProperty("deepseekModel") ?: "deepseek-v4-flash"}\""
+        // 高德 Web 服务 Key（步行路线 REST 接口用）
+        buildConfigField "String", "AMAP_WEB_KEY", "\"${localProps.getProperty("amapWebKey") ?: project.findProperty("amapWebKey") ?: ""}\""
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -63,8 +65,8 @@ dependencies {
     implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.8.6'
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1'
 
-    // 高德「地图+定位+搜索」三合一合并包（避免 3dmap 与 search 单独引入时的重复类冲突，鉴权统一）
-    implementation 'com.amap.api:3dmap-location-search:10.1.700_loc6.5.1_sea9.7.4'
+    // 高德 3D 地图 SDK（10.x 已内置定位；步行路线改用 Web 服务 REST 接口，不再依赖 search SDK）
+    implementation 'com.amap.api:3dmap:10.0.600'
 
     testImplementation 'junit:junit:4.13.2'
     androidTestImplementation 'androidx.test.ext:junit:1.2.1'

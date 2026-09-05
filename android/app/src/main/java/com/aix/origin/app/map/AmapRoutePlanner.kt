@@ -1,65 +1,74 @@
 package com.aix.origin.app.map
 
-import android.content.Context
+import com.aix.origin.app.BuildConfig
 import com.aix.origin.app.engine.GeoPoint
-import com.amap.api.services.core.LatLonPoint
-import com.amap.api.services.route.BusRouteResult
-import com.amap.api.services.route.DriveRouteResult
-import com.amap.api.services.route.RideRouteResult
-import com.amap.api.services.route.RouteSearch
-import com.amap.api.services.route.WalkRouteResult
-import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlin.coroutines.resume
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import org.json.JSONObject
+import java.net.HttpURLConnection
+import java.net.URL
 
 /**
- * 高德步行路径规划（RouteSearch）。
+ * 高德步行路径规划（Web 服务 REST 接口）。
  *
- * 与栅格 A* 的区别：走的是真实道路/小路，不会穿楼穿墙；
- * 结果转成引擎坐标 [GeoPoint] 列表，供地图绘制与 LLM 作为基线路线参考。
+ * 用 `restapi.amap.com/v3/direction/walking` 的 HTTP 接口沿真实道路算步行路线，
+ * 返回 polyline 坐标串。走 Web 服务 Key，避开 search SDK 的「MD5安全码」鉴权问题。
  */
-class AmapRoutePlanner(context: Context) {
+class AmapRoutePlanner {
 
-    private val routeSearch = RouteSearch(context.applicationContext)
-
-    /** 协程挂起式查询步行路线；无结果/失败返回 null（调用方回退栅格 A*） */
+    /** 单段步行路线（阻塞网络，须在 IO 线程调用） */
     suspend fun walk(from: GeoPoint, to: GeoPoint): List<GeoPoint>? =
-        suspendCancellableCoroutine { cont ->
-            routeSearch.setRouteSearchListener(object : RouteSearch.OnRouteSearchListener {
-                override fun onWalkRouteSearched(r: WalkRouteResult?, code: Int) {
-                    // 算路失败时 AMap 会回调 null，这里必须按可空处理
-                    val pts = if (code == 1000 && r != null) extractPoints(r) else null
-                    if (cont.isActive) cont.resume(pts)
+        withContext(Dispatchers.IO) {
+            try {
+                val url = "https://restapi.amap.com/v3/direction/walking" +
+                    "?origin=${from.lng},${from.lat}" +
+                    "&destination=${to.lng},${to.lat}" +
+                    "&key=${BuildConfig.AMAP_WEB_KEY}"
+                val conn = URL(url).openConnection() as HttpURLConnection
+                try {
+                    conn.connectTimeout = 5_000
+                    conn.readTimeout = 10_000
+                    if (conn.responseCode != 200) return@withContext null
+                    val resp = conn.inputStream.bufferedReader().use { it.readText() }
+                    parseWalk(resp)
+                } finally {
+                    conn.disconnect()
                 }
-                override fun onDriveRouteSearched(r: DriveRouteResult?, code: Int) {}
-                override fun onBusRouteSearched(r: BusRouteResult?, code: Int) {}
-                override fun onRideRouteSearched(r: RideRouteResult?, code: Int) {}
-            })
-            val query = RouteSearch.WalkRouteQuery(
-                RouteSearch.FromAndTo(
-                    LatLonPoint(from.lat, from.lng),
-                    LatLonPoint(to.lat, to.lng),
-                )
-            )
-            routeSearch.calculateWalkRouteAsyn(query)
+            } catch (e: Exception) {
+                null
+            }
         }
 
-    /** 按途经点分段算路并拼接（pos → wp1 → wp2 → … → 终点），任一段失败返回 null */
+    /** 按途经点分段算路并拼接（pos → wp1 → wp2 → … → 终点） */
     suspend fun walkThrough(points: List<GeoPoint>): List<GeoPoint>? {
         if (points.size < 2) return null
         val result = ArrayList<GeoPoint>()
         for (i in 0 until points.size - 1) {
             val seg = walk(points[i], points[i + 1]) ?: return null
             if (result.isEmpty()) result.addAll(seg)
-            else result.addAll(seg.drop(1)) // 去掉重复的连接点
+            else result.addAll(seg.drop(1))
         }
         return if (result.size >= 2) result else null
     }
 
-    private fun extractPoints(r: WalkRouteResult): List<GeoPoint>? {
-        val path = r.paths.firstOrNull() ?: return null
+    private fun parseWalk(resp: String): List<GeoPoint>? {
+        val root = JSONObject(resp)
+        if (root.optString("status") != "1") return null
+        val paths = root.optJSONObject("route")?.optJSONArray("paths") ?: return null
+        if (paths.length() == 0) return null
+        val steps = paths.optJSONObject(0)?.optJSONArray("steps") ?: return null
         val pts = ArrayList<GeoPoint>()
-        for (step in path.steps) {
-            step.polyline?.forEach { pts.add(GeoPoint(it.latitude, it.longitude)) }
+        for (i in 0 until steps.length()) {
+            val step = steps.optJSONObject(i) ?: continue
+            val polyline = step.optString("polyline", "")
+            for (pair in polyline.split(";")) {
+                val c = pair.split(",")
+                if (c.size >= 2) {
+                    val lng = c[0].trim().toDoubleOrNull() ?: continue
+                    val lat = c[1].trim().toDoubleOrNull() ?: continue
+                    pts.add(GeoPoint(lat, lng))
+                }
+            }
         }
         return if (pts.size >= 2) pts else null
     }
