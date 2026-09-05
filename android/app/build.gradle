@@ -51,9 +51,8 @@ dependencies {
     implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.8.6'
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1'
 
-    // 高德 3D 地图 + 定位 (官方 maven, latest.integration 会解析最新版; 可自行钉版本)
-    implementation 'com.amap.api:3dmap:latest.integration'
-    implementation 'com.amap.api:location:latest.integration'
+    // 高德 3D 地图 SDK（10.x 已内置定位，勿再单独引入 location SDK，否则重复类冲突）
+    implementation 'com.amap.api:3dmap:10.0.600'
 
     testImplementation 'junit:junit:4.13.2'
     androidTestImplementation 'androidx.test.ext:junit:1.2.1'

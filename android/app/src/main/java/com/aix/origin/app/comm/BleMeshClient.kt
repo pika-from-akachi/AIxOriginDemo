@@ -229,11 +229,13 @@ class BleMeshClient(private val context: Context) {
         val bytes = (data + "\n").toByteArray(Charsets.UTF_8)
         return try {
             if (android.os.Build.VERSION.SDK_INT >= 33) {
-                gatt?.writeCharacteristic(ch, bytes, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT)
+                // API 33+ 的 writeCharacteristic 返回 int 状态码（0=成功），旧 API 返回 boolean
+                gatt?.writeCharacteristic(ch, bytes, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT) ==
+                    BluetoothGatt.GATT_SUCCESS
             } else {
                 @Suppress("DEPRECATION")
                 ch.value = bytes
-                gatt?.writeCharacteristic(ch)
+                gatt?.writeCharacteristic(ch) == true
             }
         } catch (e: Exception) {
             Log.w(TAG, "BLE 发送失败: ${e.message}")

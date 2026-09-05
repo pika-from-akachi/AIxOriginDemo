@@ -92,7 +92,7 @@ class MapController(private val map: AMap) {
         val it = markerOverlays.iterator()
         while (it.hasNext()) {
             val m = it.next()
-            if ((m.tag as? String)?.startsWith("node:") == true) {
+            if ((m.getObject() as? String)?.startsWith("node:") == true) {
                 m.remove()
                 it.remove()
             }
@@ -107,7 +107,7 @@ class MapController(private val map: AMap) {
                     .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_AZURE))
                     .anchor(0.5f, 0.5f)
             )
-            mk.tag = "node:${n.id}"
+            mk.setObject("node:${n.id}")
             markerOverlays.add(mk)
         }
     }
@@ -116,7 +116,7 @@ class MapController(private val map: AMap) {
         val it = markerOverlays.iterator()
         while (it.hasNext()) {
             val m = it.next()
-            if ((m.tag as? String)?.startsWith("shelter:") == true) {
+            if ((m.getObject() as? String)?.startsWith("shelter:") == true) {
                 m.remove()
                 it.remove()
             }
@@ -130,7 +130,7 @@ class MapController(private val map: AMap) {
                     .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_GREEN))
                     .anchor(0.5f, 0.5f)
             )
-            mk.tag = "shelter:${s.id}"
+            mk.setObject("shelter:${s.id}")
             markerOverlays.add(mk)
         }
     }
@@ -170,10 +170,9 @@ class MapController(private val map: AMap) {
                 .position(route.first().toLatLng())
                 .icon(arrow)
                 .anchor(0.5f, 0.5f)
-                .flat(true)
                 .title("逃生方向")
         )
-        routeArrow?.tag = "route_arrow"
+        routeArrow?.setObject("route_arrow")
         updateRouteArrow(route.first())
     }
 
@@ -184,7 +183,7 @@ class MapController(private val map: AMap) {
         val p = sample.first
         mk.position = p.toLatLng()
         // AMap 用 setRotateAngle（地图平面内角度）
-        mk.setRotateAngle((-sample.bearing).toFloat())
+        mk.setRotateAngle((-sample.second).toFloat())
     }
 
     fun clearRoute() {

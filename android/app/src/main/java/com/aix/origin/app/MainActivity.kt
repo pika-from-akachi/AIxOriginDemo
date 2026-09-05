@@ -160,13 +160,14 @@ class MainActivity : AppCompatActivity() {
         mapView.onDestroy()
     }
 
-    private fun ensureMapController() {
-        if (controller != null) return
-        val map = mapView.map ?: return
+    private fun ensureMapController(): MapController? {
+        if (controller != null) return controller
+        val map = mapView.map ?: return null
         val c = MapController(map).also { controller = it }
         c.setOnMapLongClick { p -> setShelterAt(p) }
         // 初次进图，先落在中国区便于演示（等定位后再跟随用户）
         c.focusOn(DEFAULT_POS, 14f)
+        return c
     }
 
     // ================= 权限 =================
@@ -473,6 +474,9 @@ class MainActivity : AppCompatActivity() {
         alertOverlay.alpha = 1f
         alertOverlay.visibility = View.GONE
     }
+
+    /** 险情解除时自动关闭告警（与手动确认同一套隐藏逻辑） */
+    private fun hideAlarm() = dismissAlarm()
 
     private fun clearRouteUi() {
         currentRoute = null

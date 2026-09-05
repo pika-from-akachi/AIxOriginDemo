@@ -40,7 +40,7 @@ class LocationEngine(context: Context) {
 
     init {
         val option = AMapLocationClientOption().apply {
-            locationMode = AMapLocationMode.High_Accuracy // GPS 优先 + 网络补偿
+            locationMode = AMapLocationMode.Hight_Accuracy // GPS 优先 + 网络补偿（AMap 枚举拼写即 Hight）
             isOnceLocation = false
             isOnceLocationLatest = false
             interval = 1500

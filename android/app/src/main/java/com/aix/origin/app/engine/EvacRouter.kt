@@ -155,7 +155,7 @@ object EvacRouter {
         )
 
         var found = false
-        while (open.isNotEmpty()) {
+        while (open.isNotEmpty) {
             val cur = open.pop()
             if (cur == goalId) { found = true; break }
             val cx = cur % n
