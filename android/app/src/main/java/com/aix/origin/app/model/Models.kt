@@ -99,3 +99,15 @@ data class EvacRoute(
     val targetName: String,
     val plannedAt: Long = System.currentTimeMillis(),
 )
+
+/** LLM（DeepSeek）逃生规划建议 —— AI 综合分析出安全集合点，路线交给高德 */
+data class LlmPlan(
+    val survivalEstimate: Int,       // 0..100；-1 表示模型未给出
+    val analysis: String,            // 一句话中文分析
+    val recommendedTarget: String,   // 推荐前往的目标名
+    val target: GeoPoint?,           // 推荐的安全集合点坐标（AI 综合分析得出）
+    val waypoints: List<GeoPoint>,   // 避灾途经点（AI 给出，用于绕开灾情区）
+    val warnings: List<String>,      // 注意事项
+) {
+    val hasTarget: Boolean get() = target != null
+}

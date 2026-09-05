@@ -53,16 +53,6 @@
                     android:textColor="#CCFFFFFF"
                     android:textSize="12sp" />
             </LinearLayout>
-
-            <TextView
-                android:id="@+id/top_survival"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="3dp"
-                android:textColor="@color/white"
-                android:textSize="22sp"
-                android:textStyle="bold"
-                tools:text="SURVIVAL 85%" />
         </LinearLayout>
     </LinearLayout>
 
@@ -96,6 +86,18 @@
             android:textColor="@color/text_secondary"
             android:textSize="13sp" />
 
+        <!-- 最新一次 AI 逃生建议（固定显示在最下面，不被 A* 路线文案覆盖） -->
+        <TextView
+            android:id="@+id/txt_ai_advice"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:maxLines="3"
+            android:textColor="#66D9E8"
+            android:textSize="13sp"
+            android:textStyle="bold"
+            android:visibility="gone" />
+
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -116,6 +118,18 @@
                 android:layout_height="1dp" />
 
             <Button
+                android:id="@+id/btn_ai_plan"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/btn_ai_plan"
+                android:textSize="14sp" />
+
+            <Space
+                android:layout_width="10dp"
+                android:layout_height="1dp" />
+
+            <Button
                 android:id="@+id/fab_sos"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
@@ -126,6 +140,42 @@
                 android:textSize="15sp"
                 android:textStyle="bold" />
         </LinearLayout>
+    </LinearLayout>
+
+    <!-- 危险悬浮盒（灵动岛式：点「我知道了」后持续显示，不遮挡地图） -->
+    <LinearLayout
+        android:id="@+id/danger_banner"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|center_horizontal"
+        android:layout_marginTop="100dp"
+        android:background="@drawable/bg_chip"
+        android:elevation="6dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingLeft="16dp"
+        android:paddingTop="8dp"
+        android:paddingRight="16dp"
+        android:paddingBottom="8dp"
+        android:visibility="gone">
+
+        <View
+            android:id="@+id/danger_banner_dot"
+            android:layout_width="8dp"
+            android:layout_height="8dp"
+            android:background="@drawable/bg_dot"
+            android:backgroundTint="@color/aix_red" />
+
+        <TextView
+            android:id="@+id/danger_banner_text"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:maxLines="1"
+            android:textColor="@color/text_primary"
+            android:textSize="13sp"
+            android:textStyle="bold"
+            tools:text="路面塌陷 · 存活率 43%" />
     </LinearLayout>
 
     <!-- 全屏紧急告警浮层（Level2 或进入危险区时显示） -->

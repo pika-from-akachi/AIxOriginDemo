@@ -17,7 +17,7 @@
 |---|---|
 | **固件** [`firmware/AIxNode`](firmware/AIxNode) | ESP32-S3 · ESP-NOW mesh · U8g2 OLED(SPI) · 外接 GPS(UART NMEA) |
 | **水位检测节点** [`firmware/WaterSensorNode`](firmware/WaterSensorNode/README.md) | MicroPython · GPIO5 ADC1 · SPI OLED（SSD1309）· 自适应滤波与干湿标定 |
-| **App** [`android/`](android/README.md) | Kotlin / JDK 17 · 高德 3D 地图 + 定位 · BLE(Nordic UART) / WiFi UDP · 自研 A* 导航 |
+| **App** [`android/`](android/README.md) | Kotlin / JDK 17 · 高德 3D 地图 + 定位 · BLE(Nordic UART) / WiFi UDP · 自研 A* 导航 · DeepSeek LLM 逃生规划 |
 | **文档** [`docs/`](docs) | 接线 · 演示脚本 · 验收对照 |
 
 固件侧即 PRD 中的**“第一个检测节点”**（哨兵 / 终端复合为主，也支持中继、随身终端两种角色）。
@@ -56,8 +56,9 @@ AIxOriginDemo/
 水位 OUT 使用 GPIO5，OLED 使用 SPI（SCK12/MOSI11/CS10/DC7/RES8）。包括已上板运行的 MicroPython 程序、
 标定工具、接地对照、滤波仿真及 Arduino 串口参考源码。
 
-这是一套独立的传感器验证固件，尚未接入 AIxNode 的 ESP-NOW/Android 数据链路；
-原有 `pio run` 构建入口保持不变。已完成干燥与 **1cm** 浸水验证，计划的 **3cm** 标定尚待实测。
+该节点通过 **BLE 广播**（设备名 `AIxWtr`，Service Data UUID `0xFFF0`）每 250ms 上报水位，
+Android App 直接扫描接收并映射为「积水(FLOOD)」灾情预警（详见 [android/README.md](android/README.md)）。
+已完成干燥与 **1cm** 浸水验证，计划的 **3cm** 标定尚待实测。
 
 ## 三种角色（同一份固件，编译期切换）
 

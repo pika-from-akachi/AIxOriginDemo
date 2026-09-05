@@ -27,7 +27,7 @@ object EvacRouter {
     private const val MAX_HALF_M = 3000.0
     private const val MIN_HALF_M = 200.0
 
-    private data class Target(val position: GeoPoint, val name: String)
+    data class Target(val position: GeoPoint, val name: String)
 
     /**
      * 规划逃生路线。start 必须为当前位置。
@@ -40,7 +40,7 @@ object EvacRouter {
     ): EvacRoute? {
         val validZones = zones.filter { it.polygon.size >= 3 }
         if (validZones.isEmpty()) return null
-        val target = chooseTarget(start, validZones, shelters) ?: return null
+        val target = pickTarget(start, validZones, shelters) ?: return null
         val points = aStar(start, target.position, validZones) ?: return null
 
         var length = 0.0
@@ -63,7 +63,7 @@ object EvacRouter {
 
     // ---------------- 目标选择 ----------------
 
-    private fun chooseTarget(
+    fun pickTarget(
         start: GeoPoint,
         zones: List<HazardZone>,
         shelters: List<Shelter>,

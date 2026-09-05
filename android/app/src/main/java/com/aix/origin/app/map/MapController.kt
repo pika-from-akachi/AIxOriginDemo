@@ -36,6 +36,9 @@ class MapController(private val map: AMap) {
     private var routePolyline: Polyline? = null
     private var routeArrow: Marker? = null
     private var selfMarker: Marker? = null
+    private var targetMarker: Marker? = null
+    private var advisorPolyline: Polyline? = null
+    private val advisorMarkers = ArrayList<Marker>()
 
     private var currentRoute: List<GeoPoint> = emptyList()
     private var satellite = false
@@ -47,6 +50,7 @@ class MapController(private val map: AMap) {
     private val strokeL2 = 0xFFC62828.toInt()
     private val routeColor = 0xFF1B8A4C.toInt()
     private val routeWidth = 14f
+    private val advisorColor = 0xFF00BCD4.toInt()
 
     init {
         map.uiSettings.isZoomControlsEnabled = false
@@ -148,19 +152,24 @@ class MapController(private val map: AMap) {
         }
     }
 
-    /** 自身位置蓝点（也可放大显示） */
-    fun setSelf(point: GeoPoint) {
+    /** 自身位置箭头（尖端朝北，随手机朝向旋转） */
+    fun setSelf(point: GeoPoint, bearing: Float = 0f) {
         if (selfMarker == null) {
             selfMarker = map.addMarker(
                 MarkerOptions()
                     .position(point.toLatLng())
-                    .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_BLUE))
+                    .icon(locationArrowBitmap())
                     .anchor(0.5f, 0.5f)
                     .title("我")
             )
-        } else {
-            selfMarker?.position = point.toLatLng()
         }
+        selfMarker?.position = point.toLatLng()
+        selfMarker?.setRotateAngle(bearing)
+    }
+
+    /** 仅更新自身箭头的朝向（传感器航向实时刷新，不改变位置） */
+    fun updateSelfBearing(bearing: Float) {
+        selfMarker?.setRotateAngle(bearing)
     }
 
     // ---------------- 逃生路线 + 动态箭头 ----------------
@@ -205,6 +214,58 @@ class MapController(private val map: AMap) {
         routePolyline = null
         routeArrow?.remove()
         routeArrow = null
+        clearAdvisorRoute()
+        clearTarget()
+    }
+
+    // ---------------- AI 推荐的安全集合点标记 ----------------
+
+    fun markTarget(point: GeoPoint, name: String) {
+        clearTarget()
+        targetMarker = map.addMarker(
+            MarkerOptions()
+                .position(point.toLatLng())
+                .title("安全点 · $name")
+                .snippet("AI 推荐的安全集合点")
+                .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_GREEN))
+                .anchor(0.5f, 0.5f)
+        )
+    }
+
+    fun clearTarget() {
+        targetMarker?.remove()
+        targetMarker = null
+    }
+
+    // ---------------- LLM 建议路线（青色虚线叠加，区别于 A* 绿色基线） ----------------
+
+    fun showAdvisorRoute(points: List<GeoPoint>) {
+        clearAdvisorRoute()
+        if (points.size < 2) return
+        advisorPolyline = map.addPolyline(
+            PolylineOptions()
+                .color(advisorColor)
+                .width(12f)
+                .setDottedLine(true)
+                .addAll(points.map { it.toLatLng() })
+        )
+        for (p in points) {
+            val mk = map.addMarker(
+                MarkerOptions()
+                    .position(p.toLatLng())
+                    .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_CYAN))
+                    .anchor(0.5f, 0.5f)
+            )
+            mk.setObject("advisor")
+            advisorMarkers.add(mk)
+        }
+    }
+
+    fun clearAdvisorRoute() {
+        advisorPolyline?.remove()
+        advisorPolyline = null
+        advisorMarkers.forEach { it.remove() }
+        advisorMarkers.clear()
     }
 
     /** 沿路线取 user 前方 lookahead 处的点与方位角 */
@@ -298,6 +359,31 @@ class MapController(private val map: AMap) {
             lineTo(s * 0.84f, s * 0.70f)
             lineTo(s / 2f, s * 0.52f)
             lineTo(s * 0.16f, s * 0.70f)
+            close()
+        }
+        c.drawPath(path, fill)
+        c.drawPath(path, stroke)
+        return BitmapDescriptorFactory.fromBitmap(bmp)
+    }
+
+    /** 自身定位箭头（蓝色，尖端朝正北；用 setRotateAngle 转到手机朝向） */
+    private fun locationArrowBitmap(): BitmapDescriptor {
+        val s = 64
+        val bmp = Bitmap.createBitmap(s, s, Bitmap.Config.ARGB_8888)
+        val c = Canvas(bmp)
+        val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(0x1A, 0x73, 0xE8) }
+        val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.WHITE
+            style = Paint.Style.STROKE
+            strokeWidth = 5f
+            strokeCap = Paint.Cap.ROUND
+            strokeJoin = Paint.Join.ROUND
+        }
+        val path = Path().apply {
+            moveTo(s / 2f, s * 0.10f)
+            lineTo(s * 0.84f, s * 0.82f)
+            lineTo(s / 2f, s * 0.58f)
+            lineTo(s * 0.16f, s * 0.82f)
             close()
         }
         c.drawPath(path, fill)
