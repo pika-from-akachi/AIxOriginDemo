@@ -58,3 +58,10 @@
 - 想更“快”：`renderUi()` 帧间隔 `80`→`40` ms。
 - 想更“醒目”：反白频率 `350`ms 调小；外接告警灯设 `ALARM_PIN`。
 - 距离更远：给中继板烧角色 2，并把 `MAX_HOPS` 调大（注意广播风暴）。
+
+
+## 水位输入单节点实测
+
+[WaterSensorNode](../firmware/WaterSensorNode/README.md) 提供 GPIO5 真实采样到 OLED 的独立演示，
+包括每秒日志、干湿标定与进度条。已验证 1cm 浸水有明确响应，3cm 满量程仍需按指南重新采集。
+这项结果不表示水位已经通过 ESP-NOW 发送到 App；原有多节点通信演示仍使用上文 AIxNode 固件。

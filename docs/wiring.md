@@ -1,5 +1,10 @@
 # 接线说明 (ESP32-S3 + OLED)
 
+> **水位实测硬件入口**：GPIO5 + I²C OLED（SDA9、SCL8）的接法、5V 模块分压与标定见
+> [WaterSensorNode](../firmware/WaterSensorNode/README.md#接线与输入电压)。
+> 本文下面的 SPI 引脚表适用于原 AIxNode，不适用于这次已点亮的四针 I²C OLED。
+
+
 以 **ESP32-S3-DevKitC-1**（或同类 S3 核心板）为例。默认引脚全部在
 `AIxNode.ino` 顶部 `用户配置区`，改接线后同步改宏即可。
 

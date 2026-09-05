@@ -1,3 +1,11 @@
 # PlatformIO build artifacts
 .pio/
 build.log
+
+# Python tooling and device-local water calibration
+__pycache__/
+*.py[cod]
+.venv/
+firmware/WaterSensorNode/micropython/water_capture*.json
+firmware/WaterSensorNode/micropython/water_calibration*.json
+firmware/WaterSensorNode/**/*.bin

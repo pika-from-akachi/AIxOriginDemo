@@ -16,6 +16,7 @@
 | 端 | 技术栈 |
 |---|---|
 | **固件** [`firmware/AIxNode`](firmware/AIxNode) | ESP32-S3 · ESP-NOW mesh · U8g2 OLED(SPI) · 外接 GPS(UART NMEA) |
+| **水位检测节点** [`firmware/WaterSensorNode`](firmware/WaterSensorNode/README.md) | MicroPython · GPIO5 ADC1 · I²C OLED（SDA9/SCL8）· 自适应滤波与干湿标定 |
 | **App** [`android/`](android/README.md) | Kotlin / JDK 17 · 高德 3D 地图 + 定位 · BLE(Nordic UART) / WiFi UDP · 自研 A* 导航 |
 | **文档** [`docs/`](docs) | 接线 · 演示脚本 · 验收对照 |
 
@@ -28,6 +29,7 @@ AIxOriginDemo/
 ├── android/
 │   └── README.md           # Android App(高德地图+mesh桥接+逃生导航) 说明
 ├── firmware/
+│   ├── WaterSensorNode/    # 已实测水位节点、部署工具和测试（独立 MicroPython 固件）
 │   └── AIxNode/
 │       └── AIxNode.ino      # 完整固件(单文件, 含全部模块, 详细中文注释)
 ├── docs/
@@ -47,6 +49,15 @@ AIxOriginDemo/
 | ⑤ 穿戴端定位 | 外接 GPS 模块(串口 NMEA)解析真实坐标，随 ESP-NOW 报文广播 | 定位后自动上报 |
 
 > Android App 的功能说明见 [`android/README.md`](android/README.md)。
+
+## 实测水位检测节点
+
+新增 [WaterSensorNode 使用指南](firmware/WaterSensorNode/README.md)：ESP32-S3 N16R8，
+水位 OUT 使用 GPIO5，OLED 使用 SDA9/SCL8。包括已上板运行的 MicroPython 程序、
+标定工具、接地对照、滤波仿真及 Arduino 串口参考源码。
+
+这是一套独立的传感器验证固件，尚未接入 AIxNode 的 ESP-NOW/Android 数据链路；
+原有 `pio run` 构建入口保持不变。已完成干燥与 **1cm** 浸水验证，计划的 **3cm** 标定尚待实测。
 
 ## 三种角色（同一份固件，编译期切换）
 
