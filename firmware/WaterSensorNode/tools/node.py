@@ -11,11 +11,16 @@ def command_args(port, action, state=None):
     args = [sys.executable, "-m", "mpremote", "connect", port]
     if action == "deploy":
         # Dependencies first, boot entry point last. Calibration is never copied.
-        for name in ("ssd1306.py", "signal_processing.py", "water_monitor.py", "main.py"):
+        for name in (
+            "ssd1306.py", "signal_processing.py", "water_monitor.py",
+            "ble_protocol.py", "ble_water_node.py", "main.py",
+        ):
             args += ["fs", "cp", str(ROOT / "micropython" / name), ":" + name, "+"]
         args += ["reset"]
     elif action == "calibrate":
         args += ["exec", "from water_monitor import capture; capture(%r)" % state]
+    elif action == "calibrate-point":
+        args += ["exec", "from water_monitor import capture_depth; capture_depth(%d)" % state]
     elif action == "status":
         args += ["exec", "from water_monitor import WaterMonitor; m=WaterMonitor(); "
                  "m.update(); print(m.adc); print(m.last)"]
@@ -33,12 +38,21 @@ def main():
     sub.add_parser("reset")
     cal = sub.add_parser("calibrate", help="User must already hold the requested physical state")
     cal.add_argument("state", choices=("dry", "wet"))
+    point = sub.add_parser(
+        "calibrate-point",
+        help="Capture one point for nonlinear depth correction",
+    )
+    point.add_argument("depth_mm", type=int, choices=(0, 5, 10, 15, 20, 25, 30))
     args = parser.parse_args()
     if args.action == "calibrate":
         print("Capturing %s for about 10 seconds; keep the physical state fixed." % args.state,
               flush=True)
-    result = subprocess.run(command_args(args.port, args.action, getattr(args, "state", None)))
-    if args.action in ("calibrate", "status"):
+    if args.action == "calibrate-point":
+        print("Capturing depth %d mm for about 10 seconds; keep it fixed."
+              % args.depth_mm, flush=True)
+    value = getattr(args, "state", getattr(args, "depth_mm", None))
+    result = subprocess.run(command_args(args.port, args.action, value))
+    if args.action in ("calibrate", "calibrate-point", "status"):
         # A raw-REPL operation pauses main.py. Resume the live display even on errors.
         reset = subprocess.run(command_args(args.port, "reset"))
         if result.returncode == 0 and reset.returncode != 0:

@@ -1,7 +1,8 @@
 # ESP32-S3 水位检测节点
 
-已在 ESP32-S3 N16R8 + 128×64 I²C OLED + 三引脚模拟水位模块上验证。
-实际运行入口是 `micropython/main.py`：GPIO5 采集、滤波、标定、OLED 百分比与进度条。
+已在 ESP32-S3 N16R8 + 128×64 SPI OLED（SSD1309）+ 三引脚模拟水位模块上验证。
+实际运行入口是 `micropython/main.py`：GPIO5 采集、滤波、标定、BLE 广播，
+OLED 可用时同时显示百分比与进度条。OLED 缺失或接线异常不会阻止广播。
 
 本目录与 `../AIxNode` 的 ESP-NOW/GPS Arduino 固件并存。它是独立的传感器验证节点，
 尚未实现向现有 Mesh 报文或 Android App 发送水位数据；烧录两者中的一个会替换另一个运行环境。
@@ -14,6 +15,8 @@
 | `micropython/main.py` | 上电自动运行 |
 | `micropython/water_monitor.py` | GPIO5、OLED、真实采样、干湿标定与保存 |
 | `micropython/signal_processing.py` | 去极值均值、自适应 EMA、标定判别 |
+| `micropython/ble_water_node.py` | GPIO5 采样、可选 OLED、每秒刷新广播数据 |
+| `micropython/ble_protocol.py` | 固定31字节广播包的编解码与 CRC |
 | `micropython/ssd1306.py` | 实测可点亮该 OLED 的官方兼容驱动；实际控制器型号未独立确认 |
 | `tools/node.py` | 指定串口部署、读取状态、标定、复位 |
 | `tools/ground_*.py` | GPIO4/5 接地对照，执行前必须断开传感器 OUT 并正确接地 |
@@ -22,14 +25,28 @@
 | `arduino/WaterLevelADC/` | 3.3V 模块的 Arduino 串口参考源码，GPIO5，未编译/上板验证，不含 OLED/Mesh |
 | `arduino/WaterLevelADC5V/` | 5V + 两只 10kΩ 分压的 Arduino 参考源码，GPIO5，电压估计倍率为 2，未编译/上板验证 |
 
+广播字段、字节序、状态位和接收规则见 [BLE_PROTOCOL.md](BLE_PROTOCOL.md)。
+电脑开启蓝牙后，可安装 `requirements-scanner.txt` 并运行 `tools/scan_ble.py` 解码实时报文：
+
+```bash
+python -m pip install -r firmware/WaterSensorNode/requirements-scanner.txt
+python firmware/WaterSensorNode/tools/scan_ble.py --seconds 10
+```
+
 ## 接线与输入电压
 
 | 连接 | 主板引脚 |
 |---|---|
 | OLED VCC / GND | 3V3 / GND |
-| OLED SDA / SCL | **GPIO9 / GPIO8** |
+| OLED SCL(SCK) | **GPIO12** |
+| OLED SDA(MOSI) | **GPIO11** |
+| OLED CS | **GPIO10** |
+| OLED DC | **GPIO7** |
+| OLED RES | **GPIO8** |
 | 传感器模拟信号 | **GPIO5，ADC1_CH4** |
 | 传感器 GND | 主板 GND |
+| 无源蜂鸣器模块 SIG / S | **GPIO6（2kHz PWM）** |
+| 无源蜂鸣器模块 VCC / GND | **3V3 / GND** |
 
 这块测试板的 GPIO4 接地读数异常，换 GPIO5 后获得明确的干湿响应；这不是所有 S3 的通病结论。
 测传感器前，必须拆掉 GPIO5→GND 的临时接地测试线。改线时断开所有电源。
@@ -50,6 +67,12 @@ GPIO5 不耐 5V；未证明 OUT 最大电压安全时，5V 模块应加分压，
 使用两只相等电阻后将其改为 `2.0`，并把 OLED 标题中的 `DIRECT` 改为 `DIV 1:2`。
 该倍率只用于输出电压估计，不能提供电气保护。改变供电、分压或引脚后，重新执行干燥及浸水标定。
 OLED 一直使用 3V3；浸水仅限探测区，顶部元件、针脚及主板不得入水。
+
+标准三针无源蜂鸣器模块按校正后的水位百分比工作：低于20%静音；20%～60%循环播放原创
+提示旋律；超过60%输出1600Hz急促报警声（约90ms响/60ms停的短促脉冲）。下降时分别在18%和58%退出当前报警档，避免阈值
+附近反复切换。旋律模式 OLED 顶行显示 `WATER NOTICE`，高水位显示 `HIGH WATER`；任一报警
+模式启用时 BLE `flags` 的 `0x40` 位为1。两针裸蜂鸣器不能按此表直接接GPIO6，应增加三极管
+和限流电阻。
 
 ## 环境与部署
 
@@ -78,18 +101,18 @@ python firmware/WaterSensorNode/tools/node.py --port COM4 status
 再按官方页面执行擦除和地址 0 烧录；本仓库不自动执行擦除，也不保存个人设备备份。
 原生 USB 的端口号可能在安装后变化，请重新枚举。
 
-## 标定：当前 1cm 已验证，目标 3cm 待完成
+## 标定：3cm基准已完成实测
 
-2026-09-05 的实测：
+2026-09-05 的当前3cm标定：
 
 | 状态 | 40 组块统计值范围 | 去极值代表值（0～65535） |
 |---|---:|---:|
-| 干燥 | 0～85 | 0 |
-| 浸水 **1cm** | 14927～17028 | 15659.25 |
+| 干燥 | 0～0 | 0 |
+| 浸水 **3cm** | 20693～21247 | 20976.2 |
 
-该组数据通过干湿差异检查，重启后显示正常。它只能证明干湿响应明显，不是精确水深校准。
-用户后来指定最大测量深度为 **3cm**，但尚未采集 3cm 数据。**不要把 1cm 的标定当作 3cm。**
-测试数据位于 `tests/fixtures/gpio5_dry_wet_1cm.json`，部署工具不会复制它。
+标定跨度为20976.2，最低有效要求为945，校验通过。重启后在3cm状态连续输出100%。
+固件使用独立的3cm标定文件，原1cm标定不会被加载。历史1cm测试数据仍保存在
+`tests/fixtures/gpio5_dry_wet_1cm.json`，只用于回归测试，部署工具不会复制它。
 
 1. 探测区取出、擦干、固定，等待稳定，然后执行：
 
@@ -104,8 +127,29 @@ python firmware/WaterSensorNode/tools/node.py --port COM4 status
    ```
 
 每次采集约 10 秒。`dry` 开始新一轮标定，清除旧的有效标定；`wet` 必须在同一接法的新 dry 之后采集。
-工具执行后会复位，恢复实时显示。数据保存在设备的 `water_capture_5v_direct_gpio5.json` /
-`water_calibration_5v_direct_gpio5.json`；文件名来自原实验，换分压也必须重新采集。
+工具执行后会复位，恢复实时显示。数据保存在设备的 `water_capture_gpio5_3cm.json` /
+`water_calibration_gpio5_3cm.json`；改变供电、分压或接线后必须重新采集。
+
+### 多点线性化
+
+端点标定只能把传感器信号映射到0～100%，不能消除电极传感器自身的非线性。要让百分比
+近似对应实际浸入深度，按上升方向依次采集以下7个点，每次固定约10秒：
+
+```bash
+python firmware/WaterSensorNode/tools/node.py --port COM4 calibrate-point 0
+python firmware/WaterSensorNode/tools/node.py --port COM4 calibrate-point 5
+python firmware/WaterSensorNode/tools/node.py --port COM4 calibrate-point 10
+python firmware/WaterSensorNode/tools/node.py --port COM4 calibrate-point 15
+python firmware/WaterSensorNode/tools/node.py --port COM4 calibrate-point 20
+python firmware/WaterSensorNode/tools/node.py --port COM4 calibrate-point 25
+python firmware/WaterSensorNode/tools/node.py --port COM4 calibrate-point 30
+```
+
+数字单位为毫米。必须从干燥0mm开始，按顺序逐步加深，使用同一种水并保持传感器姿态不变。
+至少包含0mm和30mm端点、各点单调且总跨度通过检查后，程序会写入
+`water_depth_curve_gpio5_3cm.json` 并启用分段线性反算。可以先用少量中间点试验，随后补点；
+每增加一个有效点，曲线都会更新。校验失败时继续使用原来的两点标定。BLE `flags` 的
+`0x20` 位表示曲线已启用。
 
 状态含义：
 

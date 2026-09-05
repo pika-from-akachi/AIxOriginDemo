@@ -1,6 +1,6 @@
-import time
 import sys
-from water_monitor import run
+import time
+from ble_water_node import run
 
 time.sleep_ms(500)
 try:

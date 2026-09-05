@@ -162,3 +162,29 @@ class SSD1306_SPI(SSD1306):
         self.cs(0)
         self.spi.write(buf)
         self.cs(1)
+
+
+class SSD1309_SPI(SSD1306_SPI):
+    """SSD1309 (2.42") init differs from SSD1306: no charge pump / IREF,
+    and distinct timing values. Mirrors the U8g2 noname2 init sequence."""
+
+    def init_display(self):
+        for cmd in (
+            SET_DISP,                  # display off
+            SET_DISP_CLK_DIV, 0xA0,    # clock divide ratio + oscillator freq
+            SET_DISP_START_LINE,       # start at line 0
+            SET_MEM_ADDR, 0x00,        # horizontal addressing (keeps show() working)
+            SET_SEG_REMAP | 0x01,      # column addr 127 mapped to SEG0
+            SET_COM_OUT_DIR | 0x08,    # scan from COM[N] to COM0
+            SET_COM_PIN_CFG, 0x12,     # COM pins hardware config
+            SET_CONTRAST, 0x6F,        # contrast
+            SET_PRECHARGE, 0xD3,       # pre-charge period
+            SET_VCOM_DESEL, 0x20,      # VCOMH deselect level
+            0x2E,                      # deactivate scroll
+            SET_ENTIRE_ON,             # output follows RAM contents
+            SET_NORM_INV,              # not inverted
+            SET_DISP | 0x01,           # display on
+        ):
+            self.write_cmd(cmd)
+        self.fill(0)
+        self.show()
