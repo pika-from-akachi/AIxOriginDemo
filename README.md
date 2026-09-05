@@ -4,13 +4,20 @@
 
 > 灾害输入 → 边缘决策引擎(危险指数/存活率) → **无路由器** ESP-NOW 广播 → OLED / App 实时逃生指引
 
-**系统组成：**
+## 技术栈
 
-| 组件 | 技术栈 | 职责 |
-|---|---|---|
-| [`firmware/AIxNode`](firmware/AIxNode) | ESP32-S3 · ESP-NOW · U8g2 OLED | 检测 / 中继 / 随身终端三合一节点，单份固件编译期切角色 |
-| [`android/`](android/README.md) | Android · 高德地图 · BLE/WiFi | 手机 App：灾情渲染 + 高精度定位 + A* 导航 + 告警 / SOS |
-| [`docs/`](docs) | Markdown | 接线说明、演示脚本与验收对照 |
+![ESP32-S3](https://img.shields.io/badge/-ESP32--S3-E7352C?logo=espressif&logoColor=white)
+![PlatformIO](https://img.shields.io/badge/-PlatformIO-F5822A?logo=platformio&logoColor=white)
+![ESP-NOW](https://img.shields.io/badge/-ESP--NOW-1B7AC2)
+![Android](https://img.shields.io/badge/-Android-3DDC84?logo=android&logoColor=white)
+![Kotlin](https://img.shields.io/badge/-Kotlin-7F52FF?logo=kotlin&logoColor=white)
+![AMap](https://img.shields.io/badge/-AMap-00B96B)
+
+| 端 | 技术栈 |
+|---|---|
+| **固件** [`firmware/AIxNode`](firmware/AIxNode) | ESP32-S3 · ESP-NOW mesh · U8g2 OLED(SPI) · 外接 GPS(UART NMEA) |
+| **App** [`android/`](android/README.md) | Kotlin / JDK 17 · 高德 3D 地图 + 定位 · BLE(Nordic UART) / WiFi UDP · 自研 A* 导航 |
+| **文档** [`docs/`](docs) | 接线 · 演示脚本 · 验收对照 |
 
 固件侧即 PRD 中的**“第一个检测节点”**（哨兵 / 终端复合为主，也支持中继、随身终端两种角色）。
 
