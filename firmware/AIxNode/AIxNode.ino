@@ -52,7 +52,7 @@
 // ---- 0.3 OLED 屏幕 ----------------------------------------------------------
 // 屏幕像素控制器型号: 常见 1.54"/2.42" 128x64 OLED
 //   SSD1306 (很多 1.54"), SH1106 / SSD1309 (部分 2.42")
-//   显示异常(花屏/无显示)时优先切换 OLED_MODEL 或检查接线与 I2C 地址
+//   显示异常(花屏/无显示)时优先切换 OLED_MODEL 或检查 SPI 接线与引脚
 #define OLED_MODEL_SSD1306  1
 #define OLED_MODEL_SH1106   2
 #define OLED_MODEL_SSD1309  3
@@ -60,16 +60,24 @@
   #define OLED_MODEL  OLED_MODEL_SSD1306
 #endif
 
-// I2C 引脚 (ESP32-S3-DevKitC-1 等 S3 板默认 SDA=8 / SCL=9)
-#ifndef OLED_SDA
-  #define OLED_SDA  8
+// SPI 引脚 (ESP32-S3-DevKitC-1 默认 SPI: SCK=12 / MOSI=11 / MISO=13 / SS=10)
+#ifndef OLED_SCK
+  #define OLED_SCK   12
 #endif
-#ifndef OLED_SCL
-  #define OLED_SCL  9
+#ifndef OLED_MOSI
+  #define OLED_MOSI  11
 #endif
-// 屏幕 I2C 7 位地址 0x3C 大多如此, 个别 0x3D; 需左移一位(0x78)传给 u8g2
-#ifndef OLED_I2C_ADDR
-  #define OLED_I2C_ADDR  (0x3C * 2)
+#ifndef OLED_MISO
+  #define OLED_MISO  13
+#endif
+#ifndef OLED_CS
+  #define OLED_CS    10
+#endif
+#ifndef OLED_DC
+  #define OLED_DC    6
+#endif
+#ifndef OLED_RES
+  #define OLED_RES   7
 #endif
 
 // ---- 0.4 按键 / 告警 LED(可选外接) ------------------------------------------
@@ -93,21 +101,22 @@
 #include <Arduino.h>
 #include <string.h>
 #include <stdio.h>
-#include <Wire.h>
+#include <math.h>
+#include <SPI.h>
 #include <WiFi.h>
 #include <esp_now.h>
 #include <esp_wifi.h>
 #include <U8g2lib.h>
 
 // ============================================================================
-//  2. OLED 对象 (按 OLED_MODEL 选择 U8g2 构造函数, 均为 128x64 I2C)
+//  2. OLED 对象 (按 OLED_MODEL 选择 U8g2 构造函数, 均为 128x64 4线SPI)
 // ============================================================================
 #if   OLED_MODEL == OLED_MODEL_SH1106
-  U8G2_SH1106_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, U8X8_PIN_NONE);
+  U8G2_SH1106_128X64_NONAME_F_4W_HW_SPI u8g2(U8G2_R0, OLED_CS, OLED_DC, OLED_RES);
 #elif OLED_MODEL == OLED_MODEL_SSD1309
-  U8G2_SSD1309_128X64_NONAME2_F_HW_I2C u8g2(U8G2_R0, U8X8_PIN_NONE);
+  U8G2_SSD1309_128X64_NONAME2_F_4W_HW_SPI u8g2(U8G2_R0, OLED_CS, OLED_DC, OLED_RES);
 #else
-  U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, U8X8_PIN_NONE);
+  U8G2_SSD1306_128X64_NONAME_F_4W_HW_SPI u8g2(U8G2_R0, OLED_CS, OLED_DC, OLED_RES);
 #endif
 
 // ============================================================================
@@ -565,6 +574,152 @@ void readSerial() {
 }
 
 // ============================================================================
+//  8.5 逃生导航: 路网(经纬度+海拔) + 危险加权最短路径
+// ============================================================================
+//  演示用假想河谷路网, 每个节点含经纬度+海拔+类型, 后续可替换为真实地理数据。
+//  思路: 把"危险"作为路段代价, 用 Dijkstra 求到避难所"累计危险最小"的路径,
+//  等价于"存活率最高"的逃生路线。山洪/泥石流场景下海拔越低越危险 -> 自动绕开低洼。
+//  注: 图规模小用 Dijkstra 即可; 换真实大规模路网时可加 A* 启发式(直线距离)。
+
+#define NET_NUM_NODES    7
+#define NET_NUM_EDGES    11
+#define NET_START        0      // 出发点: 谷口(人员所在)
+#define NET_GOAL         5      // 避难所
+#define NET_HAZARD       2      // 灾害源: 监测点
+#define LOW_ALT_M        20     // 低于此海拔 = 低洼, 山洪/泥石流时危险
+#define HAZARD_RADIUS_M  120    // 灾害源影响半径(米)
+
+#define NT_JUNCTION  0
+#define NT_DETECTION 1
+#define NT_SHELTER   2
+
+typedef struct {
+  const char *name;             // ASCII 名称(5x7 像素字库只支持英文)
+  float lat, lon;               // 经纬度 (WGS84, 度)
+  int16_t alt;                  // 海拔 (米)
+  uint8_t type;                 // NT_*
+} NetNode;
+
+typedef struct {
+  uint8_t a, b;                 // 无向边两端节点 id
+} NetEdge;
+
+// 假想河谷: 下游低洼(1 河滩 / 2 监测点) + 上游高地避难所(5)
+static const NetNode NET_NODES[NET_NUM_NODES] = {
+  /*0*/ {"VALLEY",  30.00000f, 103.00000f, 25, NT_JUNCTION},
+  /*1*/ {"RIVER",   30.00018f, 103.00062f,  3, NT_JUNCTION},
+  /*2*/ {"SENSOR",  30.00004f, 103.00057f,  5, NT_DETECTION},
+  /*3*/ {"SLOPE",   30.00126f, 102.99969f, 40, NT_JUNCTION},
+  /*4*/ {"RIDGE",   30.00216f, 102.99917f, 65, NT_JUNCTION},
+  /*5*/ {"SHELTER", 30.00287f, 103.00062f, 95, NT_SHELTER},
+  /*6*/ {"NORTH",   30.00054f, 103.00207f, 45, NT_JUNCTION},
+};
+
+static const NetEdge NET_EDGES[NET_NUM_EDGES] = {
+  {0,1}, {1,5}, {0,3}, {3,4}, {4,5}, {1,2}, {2,3}, {0,6}, {6,5}, {1,6}, {3,6}
+};
+
+#define NAV_PI    3.14159265358979f
+#define DEG2RAD   (NAV_PI / 180.0f)
+
+// 两点间大圆距离(米), Haversine 公式
+float haversineM(float lat1, float lon1, float lat2, float lon2) {
+  float dLat = (lat2 - lat1) * DEG2RAD;
+  float dLon = (lon2 - lon1) * DEG2RAD;
+  float s1 = sin(dLat * 0.5f);
+  float s2 = sin(dLon * 0.5f);
+  float a = s1 * s1 + cos(lat1 * DEG2RAD) * cos(lat2 * DEG2RAD) * s2 * s2;
+  if (a > 1.0f) a = 1.0f;
+  return 6371000.0f * 2.0f * asin(sqrt(a));
+}
+
+// 方位角(0-360, 正北=0 顺时针)
+int bearingTo(int fromNode, int toNode) {
+  float lat1 = NET_NODES[fromNode].lat * DEG2RAD;
+  float lat2 = NET_NODES[toNode].lat * DEG2RAD;
+  float dLon = (NET_NODES[toNode].lon - NET_NODES[fromNode].lon) * DEG2RAD;
+  float y = sin(dLon) * cos(lat2);
+  float x = cos(lat1) * sin(lat2) - sin(lat1) * cos(lat2) * cos(dLon);
+  float brng = atan2(y, x) * 180.0f / NAV_PI;
+  if (brng < 0) brng += 360.0f;
+  return (int)brng;
+}
+
+// 方位角 -> 8 方位名
+const char *dirName(int brng) {
+  static const char *dirs[8] = {"N","NE","E","SE","S","SW","W","NW"};
+  int idx = ((brng + 22) % 360) / 45;
+  if (idx < 0) idx += 8;
+  return dirs[idx];
+}
+
+// 单节点"危险系数" (>=1, 越大越危险): 由本地灾害等级 + 海拔 + 距灾害源距离决定
+float nodeDanger(int n) {
+  float d = 1.0f;
+  if (localState.level == 0) return d;              // 安全: 只按距离
+  uint8_t lv = localState.level;
+  if (NET_NODES[n].alt < LOW_ALT_M) d += 2.0f * lv; // 低洼被淹
+  float dh = haversineM(NET_NODES[n].lat, NET_NODES[n].lon,
+                        NET_NODES[NET_HAZARD].lat, NET_NODES[NET_HAZARD].lon);
+  if (dh < HAZARD_RADIUS_M) d += 3.0f * lv * (1.0f - dh / HAZARD_RADIUS_M); // 靠近源头
+  return d;
+}
+
+// 边代价 = 距离 × 两端平均危险系数
+float edgeCost(int a, int b) {
+  float d = haversineM(NET_NODES[a].lat, NET_NODES[a].lon,
+                       NET_NODES[b].lat, NET_NODES[b].lon);
+  return d * (nodeDanger(a) + nodeDanger(b)) * 0.5f;
+}
+
+// Dijkstra 求 start->goal 最小累计代价路径; 返回 0 成功 / -1 不可达
+int findRoute(int start, int goal, int *path, int *pathLen) {
+  float dist[NET_NUM_NODES];
+  int   prev[NET_NUM_NODES];
+  bool  visited[NET_NUM_NODES];
+  for (int i = 0; i < NET_NUM_NODES; i++) {
+    dist[i] = 1e9f; prev[i] = -1; visited[i] = false;
+  }
+  dist[start] = 0.0f;
+
+  for (int it = 0; it < NET_NUM_NODES; it++) {
+    int u = -1; float best = 1e9f;
+    for (int i = 0; i < NET_NUM_NODES; i++)
+      if (!visited[i] && dist[i] < best) { best = dist[i]; u = i; }
+    if (u < 0) break;
+    if (u == goal) break;
+    visited[u] = true;
+    for (int e = 0; e < NET_NUM_EDGES; e++) {
+      int a = NET_EDGES[e].a, b = NET_EDGES[e].b;
+      int v = (a == u) ? b : ((b == u) ? a : -1);
+      if (v < 0) continue;
+      float w = edgeCost(a, b);
+      if (dist[u] + w < dist[v]) { dist[v] = dist[u] + w; prev[v] = u; }
+    }
+  }
+
+  if (goal != start && prev[goal] < 0) return -1;
+  int rev[NET_NUM_NODES], n = 0, cur = goal;
+  while (cur >= 0) { rev[n++] = cur; cur = prev[cur]; }
+  for (int i = 0; i < n; i++) path[i] = rev[n - 1 - i];
+  *pathLen = n;
+  return 0;
+}
+
+// 路线存活率估计: 100 / 路径上最大危险系数 (排除出发点, 因已在原地无法避开)
+uint8_t routeSurvival(const int *path, int len) {
+  float maxD = 1.0f;
+  for (int i = 1; i < len; i++) {
+    float d = nodeDanger(path[i]);
+    if (d > maxD) maxD = d;
+  }
+  int surv = (int)(100.0f / maxD + 0.5f);
+  if (surv < 5) surv = 5;
+  if (surv > 99) surv = 99;
+  return (uint8_t)surv;
+}
+
+// ============================================================================
 //  9. 模块4: OLED 界面 (128x64, U8g2 全缓冲)
 // ============================================================================
 
@@ -579,30 +734,10 @@ const char *levelWord(uint8_t lv) {
 const char *hazardName(uint8_t h) {
   switch (h) {
     case HAZ_QUAKE: return "QUAKE";
-    case HAZ_RAIN:  return "RAINSTORM";
+    case HAZ_RAIN:  return "RAIN";
     case HAZ_MUD:   return "MUDSLIDE";
     default:        return "";
   }
-}
-
-// 逃生指引文案 (英文像素字库保证不乱码; 中文含义见注释)
-void guidanceFor(uint8_t hazard, uint8_t level, const char *&l1, const char *&l2) {
-  if (level == 0) {                                 // 区域正常
-    l1 = "ALL CLEAR";
-    l2 = "AREA NORMAL";
-    return;
-  }
-  if (level == 1) {                                 // 预警: 注意山洪/泥石流风险, 建议高处
-    if (hazard == HAZ_RAIN) { l1 = "HEAVY RAIN";      l2 = "GO TO HIGH GROUND"; }
-    else if (hazard == HAZ_MUD || hazard == HAZ_QUAKE) { l1 = "SLOPE RISK ALERT"; l2 = "MOVE HIGHER"; }
-    else                  { l1 = "STAY ALERT";        l2 = "SEEK HIGH GROUND"; }
-    return;
-  }
-  // level == 2: 紧急撤离
-  if (hazard == HAZ_RAIN)        { l1 = "EVACUATE FLOOD";    l2 = "GO HIGH GROUND"; }
-  else if (hazard == HAZ_MUD)    { l1 = "MUDSLIDE EVACUATE"; l2 = "AVOID LOW AREAS"; } // 避开低洼沟谷
-  else if (hazard == HAZ_QUAKE)  { l1 = "QUAKE EVACUATE";    l2 = "OPEN AREA NOW"; }
-  else                           { l1 = "EVACUATE NOW";      l2 = "TO HIGH GROUND"; }
 }
 
 // 简易 3x5 点阵数字, 用于大字号存活率 (自绘, 不依赖大字体资源)
@@ -641,10 +776,44 @@ int drawNumberBig(int x, int y, int scale, uint8_t val) {
   return xcur;
 }
 
-// 上箭头(向高处撤离)
-void drawArrowUp(int x, int y, int size, uint8_t color) {
+// 指向指定方位角的完整箭头(箭杆 + 箭头), 带脉冲位移
+void drawArrowDir(int cx, int cy, int len, int bearingDeg, uint8_t color) {
+  float rad = bearingDeg * DEG2RAD;
+  float dx = (float)sin(rad);                 // 北=0 -> (0,-1) 即向上
+  float dy = -(float)cos(rad);
+  float px = -dy, py = dx;                    // 法向(垂直方向)
+  int ox = (px > 0.5f) - (px < -0.5f);        // 法向 1px 整数近似
+  int oy = (py > 0.5f) - (py < -0.5f);
+  int pulse = (int)(sin(millis() * 0.008f) + 1.0f);   // 0..2 沿方向前后脉冲
+
+  int L = len + pulse;                        // 中心到尖端长度
+  int tipX = cx + (int)(dx * L);
+  int tipY = cy + (int)(dy * L);
+  int hbX  = cx + (int)(dx * (L - 5));        // 箭头根部
+  int hbY  = cy + (int)(dy * (L - 5));
+  int tailX = cx - (int)(dx * L);             // 箭尾
+  int tailY = cy - (int)(dy * L);
+
   u8g2.setDrawColor(color);
-  u8g2.drawTriangle(x + size / 2, y, x, y + size, x + size, y + size);
+  // 箭杆(三线加粗)
+  u8g2.drawLine(tailX, tailY, hbX, hbY);
+  u8g2.drawLine(tailX + ox, tailY + oy, hbX + ox, hbY + oy);
+  u8g2.drawLine(tailX - ox, tailY - oy, hbX - ox, hbY - oy);
+  // 箭头(三角头 + 底边闭合)
+  u8g2.drawTriangle(tipX, tipY, hbX + ox * 4, hbY + oy * 4, hbX - ox * 4, hbY - oy * 4);
+  u8g2.drawLine(hbX + ox * 4, hbY + oy * 4, hbX - ox * 4, hbY - oy * 4);
+}
+
+// 危险指数动画条: 外框 + 呼吸脉冲填充
+void drawRiskBar(int x, int y, int w, int h, uint8_t risk, uint8_t color) {
+  u8g2.setDrawColor(color);
+  u8g2.drawFrame(x, y, w, h);                        // 外框
+  int inner = w - 2;
+  int pulse = (int)(sin(millis() * 0.012f) * 1.0f);  // -1..1 呼吸
+  int fill = inner * risk / 100 + pulse;
+  if (fill < 0) fill = 0;
+  if (fill > inner) fill = inner;
+  u8g2.drawBox(x + 1, y + 1, fill, h - 2);           // 填充
 }
 
 // 计算"当前应显示的最严重状态"(本地 vs 邻居取最危险)
@@ -681,34 +850,50 @@ void drawUi(const NodeState &eff, bool isRemote, bool invert) {
   snprintf(topR, sizeof(topR), "M%d%s L%d", aliveNeighbors(),
            isRemote ? " RX" : "", (int)eff.level);
   u8g2.setFont(u8g2_font_6x10_tf);
-  u8g2.drawStr(1, 10, topL);
+  u8g2.drawStr(2, 9, topL);
   int w = u8g2.getStrWidth(topR);
-  u8g2.drawStr(127 - w, 10, topR);
-  u8g2.drawHLine(0, 13, 128);
+  u8g2.drawStr(116 - w, 9, topR);
+  // 心跳指示: 每次广播后短暂点亮(与 1s 心跳同步)
+  if ((int32_t)(millis() - lastSendMs) < 250) u8g2.drawBox(120, 3, 3, 3);
+  u8g2.drawHLine(0, 12, 128);
 
   // ---- 左: 危险等级大字 + 灾害类型/危险指数 ----
   u8g2.setFont(u8g2_font_10x20_tf);
-  u8g2.drawStr(1, 33, levelWord(eff.level));
+  u8g2.drawStr(2, 30, levelWord(eff.level));
   u8g2.setFont(u8g2_font_5x7_tf);
-  char haz[24];
   const char *hn = hazardName(eff.hazard);
-  if (hn[0]) snprintf(haz, sizeof(haz), "%s R%d", hn, (int)eff.risk);
-  else       snprintf(haz, sizeof(haz), "RISK %d", (int)eff.risk);
-  u8g2.drawStr(1, 44, haz);
+  u8g2.drawStr(2, 39, hn[0] ? hn : "RISK");          // 灾害类型
+  drawRiskBar(2, 42, 40, 4, eff.risk, c);            // 危险指数动画条
+  char riskTxt[8];
+  snprintf(riskTxt, sizeof(riskTxt), "%d", (int)eff.risk);
+  u8g2.drawStr(45, 45, riskTxt);
 
   // ---- 右: 预估存活率 (自绘大数字) ----
   u8g2.setFont(u8g2_font_5x7_tf);
-  u8g2.drawStr(66, 20, "SURVIVAL");
-  int ex = drawNumberBig(66, 24, 4, eff.survival);
-  u8g2.drawStr(ex + 2, 40, "%");
+  u8g2.drawStr(64, 20, "SURVIVAL");
+  int ex = drawNumberBig(64, 24, 4, eff.survival);
+  u8g2.drawStr(ex + 2, 39, "%");
 
-  // ---- 底栏: 逃生指引 (箭头 + 两行提示) ----
-  const char *l1, *l2;
-  guidanceFor(eff.hazard, eff.level, l1, l2);
+  // ---- 底栏: 逃生导航 (下一跳 + 方向 + 剩余距离 + 路线存活率) ----
+  int navPath[NET_NUM_NODES], navLen = 0;
+  findRoute(NET_START, NET_GOAL, navPath, &navLen);
   u8g2.setFont(u8g2_font_5x7_tf);
-  if (eff.level > 0) drawArrowUp(7, 48, 14, c);     // 高危/预警始终指向"向上/高处"
-  u8g2.drawStr(26, 55, l1);
-  u8g2.drawStr(26, 62, l2);
+  if (navLen >= 2) {
+    int next = navPath[1];
+    int brng = bearingTo(NET_START, next);
+    float remain = 0;
+    for (int i = 0; i < navLen - 1; i++)
+      remain += haversineM(NET_NODES[navPath[i]].lat, NET_NODES[navPath[i]].lon,
+                           NET_NODES[navPath[i+1]].lat, NET_NODES[navPath[i+1]].lon);
+    char nav1[24], nav2[24];
+    snprintf(nav1, sizeof(nav1), "> %s %s", NET_NODES[next].name, dirName(brng));
+    snprintf(nav2, sizeof(nav2), "%dm SURV %u%%", (int)remain, routeSurvival(navPath, navLen));
+    if (eff.level > 0) drawArrowDir(11, 52, 7, brng, c);   // 指向逃生方向的脉冲箭头(加粗, 尺寸适中)
+    u8g2.drawStr(22, 54, nav1);
+    u8g2.drawStr(22, 60, nav2);
+  } else {
+    u8g2.drawStr(22, 54, "NO ROUTE");
+  }
 }
 
 void renderUi() {
@@ -751,10 +936,8 @@ void setup() {
   Serial.println();
   Serial.printf("AIxNode boot  id=%s role=%c\r\n", nodeId, roleChar());
 
-  // --- OLED 初始化 (先指定 I2C 引脚再 begin) ---
-  Wire.begin(OLED_SDA, OLED_SCL);
-  Wire.setClock(400000L);                           // 400kHz 让刷屏更流畅
-  u8g2.setI2CAddress(OLED_I2C_ADDR);
+  // --- OLED 初始化 (4线SPI: 先初始化 SPI 总线再 begin) ---
+  SPI.begin(OLED_SCK, OLED_MISO, OLED_MOSI);        // CS/DC/RES 由 u8g2 构造器管理
   if (!u8g2.begin()) {
     Serial.println("[OLED] init FAILED (check wiring/addr/model)");
   } else {
