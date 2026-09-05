@@ -13,6 +13,10 @@
 
   /* ---------------------------------------------------------------
    * 1. Hero title + generic reveal-on-scroll
+   *
+   * Reveals now REPLAY every time an element re-enters the viewport:
+   * add `.is-in` when it becomes visible, remove it again once it has
+   * fully scrolled out of view (threshold 0 = fully gone).
    * ------------------------------------------------------------- */
   function initReveals() {
     var els = $$('.reveal');
@@ -22,16 +26,65 @@
     }
     var io = new IntersectionObserver(function (entries) {
       entries.forEach(function (en) {
+        var el = en.target;
         if (en.isIntersecting) {
-          var el = en.target;
           var d = parseInt(el.getAttribute('data-delay') || '0', 10);
           el.style.transitionDelay = (d * 130) + 'ms';
           el.classList.add('is-in');
-          io.unobserve(el);
+        } else {
+          el.classList.remove('is-in');
+          el.style.transitionDelay = '0ms';
         }
       });
-    }, { threshold: 0.12, rootMargin: '0px 0px -6% 0px' });
+    }, { threshold: [0, 0.15] });
     els.forEach(function (el) { io.observe(el); });
+  }
+
+  /* Helper: run a demo again each time `el` enters the viewport,
+     and (optionally) reset when it fully leaves. */
+  function replayOnView(el, enter, leave) {
+    if (!el) return;
+    if (!('IntersectionObserver' in window)) { enter(); return; }
+    var inView = false;
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (en) {
+        if (en.isIntersecting) {
+          if (!inView) { inView = true; enter(); }
+        } else if (inView) {
+          inView = false;
+          if (leave) leave();
+        }
+      });
+    }, { threshold: 0 });
+    io.observe(el);
+  }
+
+  /* Hero big-title words replay when scrolling back to the top page. */
+  function initHeroReplay() {
+    var hero = $('#hero');
+    if (!hero || !('IntersectionObserver' in window)) return;
+    var ready = false;
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (en) {
+        if (en.isIntersecting) {
+          if (ready) replayHeroTitle();
+          ready = false;
+        } else {
+          ready = true; // only once hero has fully left the screen
+        }
+      });
+    }, { threshold: 0 });
+    io.observe(hero);
+  }
+  function replayHeroTitle() {
+    var hero = $('#hero');
+    var title = $('.hero-title');
+    if (!title) return;
+    if (hero) hero.classList.add('is-enter');
+    var words = $$('.hero-title .w');
+    words.forEach(function (w) { w.style.animation = 'none'; });
+    void title.offsetWidth;            // force reflow so the animation restarts
+    words.forEach(function (w) { w.style.animation = ''; });
   }
 
   /* ---------------------------------------------------------------
@@ -84,6 +137,8 @@
 
   /* ---------------------------------------------------------------
    * 3. Generic counter -> number element
+   *    (each element keeps its own rAF id so re-triggered counters
+   *     cancel any run that is still in flight)
    * ------------------------------------------------------------- */
   function animateCount(el, target, opts) {
     opts = opts || {};
@@ -91,40 +146,51 @@
     var decimals = opts.decimals || 0;
     var suffix = opts.suffix || '';
     var t0 = null;
+    if (el._countRaf) cancelAnimationFrame(el._countRaf);
     function frame(t) {
       if (!t0) t0 = t;
       var p = Math.min((t - t0) / dur, 1);
       p = 1 - Math.pow(1 - p, 3); // ease-out cubic
       var v = target * p;
       el.textContent = (decimals ? v.toFixed(decimals) : Math.round(v)) + suffix;
-      if (p < 1) requestAnimationFrame(frame);
+      if (p < 1) el._countRaf = requestAnimationFrame(frame);
     }
-    requestAnimationFrame(frame);
+    el._countRaf = requestAnimationFrame(frame);
   }
 
   /* ---------------------------------------------------------------
-   * 4. Edge-engine gauge animation
+   * 4. Edge-engine gauge animation (re-runs every time the page
+   *    is scrolled back into view)
    * ------------------------------------------------------------- */
   function initGauge() {
     var card = $('#gaugeCard');
     if (!card) return;
-    var done = false;
     var arc = $('#gaugeArc');
     var arcLen = 238.8;
-    var io = new IntersectionObserver(function (entries) {
-      entries.forEach(function (en) {
-        if (en.isIntersecting && !done) {
-          done = true;
-          arc.style.strokeDashoffset = (arcLen * (1 - 97 / 100)).toFixed(2);
-          animateCount($('#gaugeVal'), 97, { suffix: '' });
-          animateCount($('#survivalVal'), 25, { suffix: '%' });
-          $('#survivalBar').style.width = '25%';
-          $('#stateVal').textContent = '危险 DANGER';
-          $('#typeVal').textContent = '泥石流';
-        }
+    var RUNS = { val: 97, surv: 25, bar: '25%', state: '危险 DANGER', type: '泥石流' };
+    function run() {
+      // reset to empty
+      arc.style.transition = 'none';
+      arc.style.strokeDashoffset = arcLen.toFixed(2);
+      $('#gaugeVal').textContent = '0';
+      $('#survivalVal').textContent = '0%';
+      $('#survivalBar').style.width = '0%';
+      $('#stateVal').textContent = '—';
+      $('#typeVal').textContent = '—';
+      void arc.getBoundingClientRect(); // force reflow so the CSS transition restarts
+      arc.style.transition = '';
+      requestAnimationFrame(function () {
+        requestAnimationFrame(function () {
+          arc.style.strokeDashoffset = (arcLen * (1 - RUNS.val / 100)).toFixed(2);
+          animateCount($('#gaugeVal'), RUNS.val, { suffix: '' });
+          animateCount($('#survivalVal'), RUNS.surv, { suffix: '%' });
+          $('#survivalBar').style.width = RUNS.bar;
+          $('#stateVal').textContent = RUNS.state;
+          $('#typeVal').textContent = RUNS.type;
+        });
       });
-    }, { threshold: 0.35 });
-    io.observe(card);
+    }
+    replayOnView(card, run, null);
   }
 
   /* ---------------------------------------------------------------
@@ -179,52 +245,70 @@
       b.addEventListener('click', function () { render(b.getAttribute('data-state')); });
     });
     render('safe');
+    // Reset to SAFE whenever the demo scrolls fully out of view, so the
+    // next visit always starts the demo over again.
+    replayOnView($('.oled-scene') || device, function () {}, function () { render('safe'); });
   }
 
   /* ---------------------------------------------------------------
-   * 6. Water-sensor rising flood demo
+   * 6. Water-sensor rising flood demo (re-runs each time it scrolls
+   *    back into view: dry -> 1 cm)
    * ------------------------------------------------------------- */
   function initWater() {
     var demo = $('.sensor-demo');
     if (!demo) return;
-    var done = false;
-    var io = new IntersectionObserver(function (entries) {
-      entries.forEach(function (en) {
-        if (en.isIntersecting && !done) {
-          done = true;
+    var timer = null;
+    function reset() {
+      if (timer) { clearTimeout(timer); timer = null; }
+      var wf = $('#waterFill');
+      wf.style.height = '6%';
+      $('#waterPct').textContent = '0';
+      var st = $('#waterStatus');
+      st.textContent = 'DRY · 干燥';
+      void wf.getBoundingClientRect();
+    }
+    function run() {
+      reset();
+      requestAnimationFrame(function () {
+        requestAnimationFrame(function () {
           $('#waterFill').style.height = '33%';
           animateCount($('#waterPct'), 1.0, { decimals: 1, suffix: '' });
           var st = $('#waterStatus');
-          setTimeout(function () { st.textContent = 'WET · 1cm 浸水 · REL 100%'; }, 900);
-        }
+          timer = setTimeout(function () { st.textContent = 'WET · 1cm 浸水 · REL 100%'; }, 900);
+        });
       });
-    }, { threshold: 0.4 });
-    io.observe(demo);
+    }
+    replayOnView(demo, run, function () { if (timer) { clearTimeout(timer); timer = null; } });
   }
 
   /* ---------------------------------------------------------------
    * 7. Phone / Android mock: power on + AI typewriter
+   *    (turns off when the page leaves the screen, so the whole
+   *     animation replays on the next visit)
    * ------------------------------------------------------------- */
   function initPhone() {
-    var phone = $('.phone');
+    // NB: `.phone` alone would match the mesh-legend dot `<i class="dot phone">`;
+    // the phone mock-up is the `.phone` inside `.phone-wrap`.
+    var phone = $('.phone-wrap > .phone');
     var aiText = $('#aiText');
     if (!phone) return;
-    var typed = false;
-    var io = new IntersectionObserver(function (entries) {
-      entries.forEach(function (en) {
-        if (en.isIntersecting && !phone.classList.contains('is-on')) {
-          phone.classList.add('is-on');
-          if (aiText && !typed && !RM) {
-            typed = true;
-            var full = '已选安全集合点：SHELTER_N（西北高地，绕开 L2 塌方区）。沿真实道路步行 312m，路线存活率 78%。';
-            setTimeout(function () { typeText(aiText, full, 16); }, 1500);
-          } else if (aiText) {
-            aiText.textContent = '已选安全集合点：SHELTER_N（西北高地）。路线存活率 78%。';
-          }
-        }
-      });
-    }, { threshold: 0.35 });
-    io.observe(phone);
+    var timer = null;
+    var FULL = '已选安全集合点：SHELTER_N（西北高地，绕开 L2 塌方区）。沿真实道路步行 312m，路线存活率 78%。';
+    var PLACEHOLDER = '正在综合灾情与地形高程选择安全集合点…';
+    function enter() {
+      phone.classList.add('is-on');
+      if (timer) clearTimeout(timer);
+      if (!aiText) return;
+      if (RM) { aiText.textContent = FULL; return; }
+      aiText.textContent = '';
+      timer = setTimeout(function () { typeText(aiText, FULL, 16); }, 1500);
+    }
+    function leave() {
+      phone.classList.remove('is-on');
+      if (timer) { clearTimeout(timer); timer = null; }
+      if (aiText) aiText.textContent = PLACEHOLDER;
+    }
+    replayOnView(phone, enter, leave);
   }
   function typeText(el, text, speed) {
     var i = 0;
@@ -586,6 +670,7 @@
     initReveals();
     var hero = $('#hero');
     if (hero) setTimeout(function () { hero.classList.add('is-enter'); }, 90);
+    initHeroReplay();
     initGauge();
     initOLED();
     initWater();
