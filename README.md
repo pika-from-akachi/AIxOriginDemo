@@ -79,6 +79,17 @@ pio device monitor -b 115200
 三块板子不同角色：把 `platformio.ini` 里注释的 `nodeB` / `nodeC` env 启用，
 或用 `pio run -e <env> -t upload` 分别烧录。
 
+### Android App（手机端）
+1. 环境：**JDK 17** + **Android SDK**（或直接用 Android Studio 自带）。
+2. 在 `android/gradle.properties` 填入高德 Key：`amapKey=你的Key`（到[高德开放平台](https://lbs.amap.com)申请，绑定包名 `com.aix.origin.app` 与调试/发布 SHA1）。
+3. 构建：
+   ```bash
+   cd android
+   ./gradlew assembleDebug   # 产物 app/build/outputs/apk/debug/app-debug.apk
+   ```
+   或用 Android Studio 打开 `android/` 直接 Run。
+4. 详见 [`android/README.md`](android/README.md)。
+
 ## 常用配置（`AIxNode.ino` 顶部）
 
 | 宏 | 默认 | 说明 |
