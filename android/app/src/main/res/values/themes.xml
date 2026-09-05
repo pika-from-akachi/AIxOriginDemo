@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.AIxOrigin" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/aix_green</item>
+        <item name="colorPrimaryVariant">@color/aix_green</item>
+        <item name="colorOnPrimary">@color/white</item>
+        <item name="colorSecondary">@color/aix_red</item>
+        <item name="android:statusBarColor">#66000000</item>
+    </style>
+</resources>

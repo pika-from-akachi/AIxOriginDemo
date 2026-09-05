@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="white">#FFFFFF</color>
+    <color name="black">#000000</color>
+
+    <!-- 安全 / 预警 / 危险 主题色 -->
+    <color name="aix_green">#2E7D32</color>
+    <color name="aix_yellow">#F9A825</color>
+    <color name="aix_red">#C62828</color>
+    <color name="aix_red_dark">#8E0000</color>
+
+    <color name="ic_launcher_background">#1B3B2B</color>
+</resources>
