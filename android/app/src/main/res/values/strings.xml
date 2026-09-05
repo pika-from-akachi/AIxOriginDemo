@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">AIxOrigin 应急避险</string>
+
+    <string name="status_default">蓝牙 Mesh: 未连接</string>
+    <string name="status_scanning">蓝牙 Mesh: 扫描中…</string>
+    <string name="status_connected">蓝牙 Mesh: 已连接</string>
+
+    <string name="sos">SOS</string>
+    <string name="btn_demo_hazard">模拟灾情 Lv2</string>
+    <string name="hint_long_press">长按地图设定“避难点/集合点”，将自动规划绕开高危区的逃生路线</string>
+
+    <string name="alert_evacuate">⚠ 紧急撤离</string>
+    <string name="alert_ack">我知道了</string>
+
+    <string name="survival_label">SURVIVAL %1$d%%</string>
+</resources>

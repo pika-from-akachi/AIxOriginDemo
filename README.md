@@ -4,12 +4,17 @@
 模拟灾害输入 → 边缘决策引擎(危险指数/存活率) → **无路由器** ESP-NOW 广播 →
 OLED 实时刷新逃生指引。多台节点可组成离网自组网，高危状态自动广播并在全网点亮紧急界面。
 
+配套 **Android 应急避险 App**（高德地图 + BLE/WiFi 桥接 mesh + A* 逃生导航）见
+[`android/`](android/README.md)。
+
 本项目即 PRD 中的**“第一个检测节点”**（哨兵/终端复合节点为主，也支持中继、随身终端两种角色）。
 
 ## 目录结构
 
 ```
 AIxOriginDemo/
+├── android/
+│   └── README.md           # Android App(高德地图+mesh桥接+逃生导航) 说明
 ├── firmware/
 │   └── AIxNode/
 │       └── AIxNode.ino      # 完整固件(单文件, 含全部模块, 详细中文注释)
@@ -114,6 +119,4 @@ ESP-NOW 单帧建议 ≤250 字节；结构体 `packed` 后约 30 字节，封�
 
 - 接线/引脚：见 [docs/wiring.md](docs/wiring.md)
 - 2 板 / 3 板演示脚本与验收对照：见 [docs/demo-script.md](docs/demo-script.md)
-
-> ⚠️ 本项目仓库创建后尚未包含任何提交（git 远端为空）。代码按“可直接拷入仓库根目录”的
-> 布局放置。首次在仓库提交后即可正常使用 issue 自动 checkout / push 流程。
+- Android App：见 [android/README.md](android/README.md)

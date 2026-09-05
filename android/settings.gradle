@@ -1,0 +1,20 @@
+pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        google()
+        mavenCentral()
+        // 高德地图 SDK 官方仓库 (3D 地图 / 定位 / 搜索 / 导航)
+        maven { url 'https://maven.amap.com:443/artifactory/repo' }
+    }
+}
+
+rootProject.name = "AIxOriginApp"
+include ':app'

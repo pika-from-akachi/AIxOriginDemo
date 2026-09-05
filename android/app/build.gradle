@@ -1,0 +1,57 @@
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+}
+
+android {
+    namespace 'com.aix.origin.app'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId "com.aix.origin.app"
+        minSdk 26
+        targetSdk 35
+        versionCode 1
+        versionName "0.1.0"
+
+        // 高德 Key：在 gradle.properties 中配置 amapKey，或命令行 -PamapKey=xxxx
+        manifestPlaceholders = [
+                AMAP_KEY: project.findProperty("amapKey") ?: "REPLACE_WITH_YOUR_AMAP_KEY"
+        ]
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    kotlinOptions {
+        jvmTarget = '17'
+    }
+    lint {
+        abortOnError false
+    }
+}
+
+dependencies {
+    implementation 'androidx.core:core-ktx:1.13.1'
+    implementation 'androidx.appcompat:appcompat:1.7.0'
+    implementation 'com.google.android.material:material:1.12.0'
+    implementation 'androidx.activity:activity-ktx:1.9.2'
+    implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.8.6'
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1'
+
+    // 高德 3D 地图 + 定位 (官方 maven, latest.integration 会解析最新版; 可自行钉版本)
+    implementation 'com.amap.api:3dmap:latest.integration'
+    implementation 'com.amap.api:location:latest.integration'
+
+    testImplementation 'junit:junit:4.13.2'
+    androidTestImplementation 'androidx.test.ext:junit:1.2.1'
+}
