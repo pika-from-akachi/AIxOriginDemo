@@ -8,10 +8,14 @@
 
     <string name="sos">SOS</string>
     <string name="btn_demo_hazard">模拟灾情 Lv2</string>
+    <string name="btn_ai_plan">AI 规划</string>
     <string name="hint_long_press">长按地图设定“避难点/集合点”，将自动规划绕开高危区的逃生路线</string>
 
     <string name="alert_evacuate">⚠ 紧急撤离</string>
     <string name="alert_ack">我知道了</string>
 
     <string name="survival_label">SURVIVAL %1$d%%</string>
+
+    <string name="ai_planning">AI 分析中…</string>
+    <string name="ai_no_key">未配置 DeepSeek Key（在 android/gradle.properties 填写 deepseekKey）</string>
 </resources>

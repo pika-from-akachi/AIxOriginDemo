@@ -17,7 +17,7 @@
 |---|---|
 | **固件** [`firmware/AIxNode`](firmware/AIxNode) | ESP32-S3 · ESP-NOW mesh · U8g2 OLED(SPI) · 外接 GPS(UART NMEA) |
 | **水位检测节点** [`firmware/WaterSensorNode`](firmware/WaterSensorNode/README.md) | MicroPython · GPIO5 ADC1 · I²C OLED（SDA9/SCL8）· 自适应滤波与干湿标定 |
-| **App** [`android/`](android/README.md) | Kotlin / JDK 17 · 高德 3D 地图 + 定位 · BLE(Nordic UART) / WiFi UDP · 自研 A* 导航 |
+| **App** [`android/`](android/README.md) | Kotlin / JDK 17 · 高德 3D 地图 + 定位 · BLE(Nordic UART) / WiFi UDP · 自研 A* 导航 · DeepSeek LLM 逃生规划 |
 | **文档** [`docs/`](docs) | 接线 · 演示脚本 · 验收对照 |
 
 固件侧即 PRD 中的**“第一个检测节点”**（哨兵 / 终端复合为主，也支持中继、随身终端两种角色）。

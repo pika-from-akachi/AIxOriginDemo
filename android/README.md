@@ -18,6 +18,7 @@
 | 高精度定位 GPS+北斗，离线弱网适配 | 高德 `High_Accuracy` 定位 + 缓存回退（弱网用 last-known） |
 | 存活率/险情引擎 + 入区告警 | `engine/RiskEngine`（基线对齐固件 95/70/25），L2 → 全屏闪烁+振动+语音 |
 | 动态避让塌方/低洼逃生路线 | `engine/EvacRouter`（A* 米制栅格；红区加权不硬封锁，区内也能逃出） |
+| AI 逃生规划（LLM 增强） | `llm/DeepSeekClient`（DeepSeek）综合灾情/地形给出存活率最高建议 + 建议路线 |
 | 动画箭头导航 + 语音 | 路线 + 沿路动态方向箭头（随定位刷新）+ 中文 TTS |
 | BLE/WiFi 桥接 mesh（双向） | `comm/BleMeshClient`(NUS UART) + `comm/WifiUdpBridge`(UDP)，上行上报 GPS/SOS |
 | UI：地图≥80%、顶栏、底部简报/逃生指令/SOS | `activity_main.xml` + `MainActivity` |
@@ -37,6 +38,8 @@ android/
    │  ├─ Geo.kt                WGS84 几何：距离/方位/点在多边形/局部投影
    │  ├─ RiskEngine.kt         存活率与险情级别（L0/L1/L2）
    │  └─ EvacRouter.kt         A* 米制栅格逃生寻路（权重绕行）
+   ├─ llm/                     逃生规划 LLM 增强
+   │  └─ DeepSeekClient.kt     DeepSeek 结构化建议（HttpURLConnection + org.json）
    ├─ comm/                    mesh 桥接
    │  ├─ GatewayParser.kt      网关 JSON/竖线帧编解码（下行灾情/心跳，上行 GPS/SOS）
    │  ├─ BleMeshClient.kt      BLE Nordic UART 客户端（扫描/连接/订阅/上行/重连）
@@ -70,6 +73,20 @@ android/
 - **WiFi 通道**：网关作为 STA 接入同一路由器后，向 UDP `50123` 广播灾情；
   App 监听同端口，并周期回传手机 GPS / 一键 SOS（`255.255.255.255` 广播）。
 - **上行协议**（手机→网关）见 `GatewayCodec`：`{"type":"gps"|"sos", ...}`。
+
+## AI 逃生规划（DeepSeek LLM 增强）
+
+在本地 A*（`engine/EvacRouter`）离线即时路线之上，接入 DeepSeek 做高层判断：
+把「当前位置 + 附近灾情（类型/级别/中心/半径/方位距离）+ 避难所 + A* 基线路线」交给 LLM，
+返回结构化建议（存活率预估、中文分析、推荐目标、可选建议路点、注意事项）。
+建议路点以**青色虚线**叠加在地图上，与 A* 绿色基线并存；断网 / 未配 Key / 解析失败时自动沿用 A*，不影响逃生闭环。
+
+- **触发**：进入 L2 危险区自动请求一次（30s 节流）+ 底栏「AI 规划」按钮手动重算。
+- **配置**：`deepseekKey` 写在 `android/local.properties`（已 gitignore，不进版本库，编译期注入 APK，App 内无填写入口）；
+  `deepseekModel` 在 `android/gradle.properties`，默认 `deepseek-v4-flash`（低延迟，客户端已关闭思考模式 `thinking:disabled` 以降低延迟），
+  需要更强推理可改为 `deepseek-v4-pro`（更慢更贵）。
+- **说明**：当前“地形”以灾情几何 + 语义近似（积水=低洼、滑坡/落石=坡地、塌陷=道路），
+  未接外部高程(DEM)；LLM 的请求结构已预留，后续接入高程可原样扩展。
 
 ## 待办 / 已知边界
 

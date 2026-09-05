@@ -3,6 +3,13 @@ plugins {
     id 'org.jetbrains.kotlin.android'
 }
 
+// 本机机密（DeepSeek Key）放在 local.properties（已 gitignore，不进版本库）
+def localProps = new Properties()
+def localPropsFile = rootProject.file('local.properties')
+if (localPropsFile.exists()) {
+    localPropsFile.withInputStream { localProps.load(it) }
+}
+
 android {
     namespace 'com.aix.origin.app'
     compileSdk 35
@@ -18,6 +25,11 @@ android {
         manifestPlaceholders = [
                 AMAP_KEY: project.findProperty("amapKey") ?: "REPLACE_WITH_YOUR_AMAP_KEY"
         ]
+
+        // DeepSeek LLM：Key 与模型 ID 经 BuildConfig 注入（默认空 Key = 未启用）
+        buildConfigField "String", "DEEPSEEK_API_KEY", "\"${project.findProperty("deepseekKey") ?: localProps.getProperty("deepseekKey") ?: ""}\""
+        buildConfigField "String", "DEEPSEEK_MODEL", "\"${project.findProperty("deepseekModel") ?: "deepseek-v4-flash"}\""
+
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -51,8 +63,8 @@ dependencies {
     implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.8.6'
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1'
 
-    // 高德 3D 地图 SDK（10.x 已内置定位，勿再单独引入 location SDK，否则重复类冲突）
-    implementation 'com.amap.api:3dmap:10.0.600'
+    // 高德「地图+定位+搜索」三合一合并包（避免 3dmap 与 search 单独引入时的重复类冲突，鉴权统一）
+    implementation 'com.amap.api:3dmap-location-search:10.1.700_loc6.5.1_sea9.7.4'
 
     testImplementation 'junit:junit:4.13.2'
     androidTestImplementation 'androidx.test.ext:junit:1.2.1'

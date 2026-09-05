@@ -15,6 +15,7 @@ data class LocationFix(
     val accuracyM: Float,
     val fromCache: Boolean,
     val time: Long,
+    val bearing: Float = 0f,   // 航向角 0-360（正北=0，顺时针）；传感器模式下即指北针朝向
 ) {
     val valid: Boolean get() = point.lat != 0.0 || point.lng != 0.0
 }
@@ -47,6 +48,7 @@ class LocationEngine(context: Context) {
             isNeedAddress = false
             isLocationCacheEnable = true // 离线/弱网回退缓存
             isMockEnable = false
+            setSensorEnable(true) // 开启传感器航向，拿到指北针朝向(bearing)
         }
         client.setLocationOption(option)
         client.setLocationListener(amapListener)
@@ -69,6 +71,7 @@ class LocationEngine(context: Context) {
             accuracyM = loc.accuracy,
             fromCache = false,
             time = loc.time,
+            bearing = loc.bearing,
         )
         if (!fix.valid) return
         lastFix = fix

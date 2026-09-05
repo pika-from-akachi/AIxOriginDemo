@@ -13,6 +13,7 @@ import android.view.View
 import android.view.animation.LinearInterpolator
 import android.widget.Button
 import android.widget.FrameLayout
+import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
@@ -29,12 +30,15 @@ import com.aix.origin.app.engine.GeoPoint
 import com.aix.origin.app.engine.RiskEngine
 import com.aix.origin.app.location.LocationEngine
 import com.aix.origin.app.location.LocationFix
+import com.aix.origin.app.llm.DeepSeekClient
+import com.aix.origin.app.map.AmapRoutePlanner
 import com.aix.origin.app.map.MapController
 import com.aix.origin.app.model.AlertLevel
 import com.aix.origin.app.model.EvacRoute
 import com.aix.origin.app.model.HazardKind
 import com.aix.origin.app.model.HazardSource
 import com.aix.origin.app.model.HazardZone
+import com.aix.origin.app.model.LlmPlan
 import com.aix.origin.app.model.MeshNode
 import com.aix.origin.app.model.RiskReport
 import com.aix.origin.app.model.Shelter
@@ -47,7 +51,7 @@ import java.util.Locale
 import kotlin.math.roundToInt
 
 /**
- * 主界面：地图 + 顶部状态/存活率 + 底部简报与逃生指令 + SOS。
+ * 主界面：地图 + 顶部状态灯 + 底部简报/逃生指令/最新 AI 建议 + SOS。
  *
  * 数据流：
  *   GPS(BLE/网关) → 灾情多边形 → RiskEngine → 存活率/警报级别
@@ -58,22 +62,26 @@ class MainActivity : AppCompatActivity() {
     // ---- 视图 ----
     private lateinit var mapView: MapView
     private lateinit var topStatus: TextView
-    private lateinit var topSurvival: TextView
     private lateinit var txtSummary: TextView
     private lateinit var txtGuidance: TextView
+    private lateinit var txtAiAdvice: TextView
     private lateinit var fabSos: Button
     private lateinit var statusDot: View
     private lateinit var alertOverlay: FrameLayout
     private lateinit var alertText: TextView
+    private lateinit var dangerBanner: LinearLayout
+    private lateinit var dangerBannerText: TextView
 
     // ---- 服务 ----
     private var controller: MapController? = null
     private val locationEngine by lazy { LocationEngine(this) }
+    private val amapRoutePlanner by lazy { AmapRoutePlanner(this) }
     private var ble: BleMeshClient? = null
     private var udp: WifiUdpBridge? = null
     private var tts: TextToSpeech? = null
     private var blinkJob: Job? = null
     private var routeJob: Job? = null
+    private var llmJob: Job? = null
 
     // ---- 状态（仅主线程读写） ----
     private val hazards = ArrayList<HazardZone>()
@@ -88,7 +96,11 @@ class MainActivity : AppCompatActivity() {
     private var started = false
     private var lastGpsSentAt = 0L
     private var alarmVisible = false
+    private var alarmAcknowledged = false
     private var cameraMovedToUser = false
+    private var aiPlanning = false
+    private var lastAiPlanAt = 0L
+    private var autoAiDone = false
 
     private val permLauncher =
         registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { grants ->
@@ -106,24 +118,26 @@ class MainActivity : AppCompatActivity() {
 
         mapView = findViewById(R.id.map_view)
         topStatus = findViewById(R.id.top_status)
-        topSurvival = findViewById(R.id.top_survival)
         txtSummary = findViewById(R.id.txt_summary)
         txtGuidance = findViewById(R.id.txt_guidance)
+        txtAiAdvice = findViewById(R.id.txt_ai_advice)
         fabSos = findViewById(R.id.fab_sos)
         statusDot = findViewById(R.id.status_dot)
         alertOverlay = findViewById(R.id.alert_overlay)
         alertText = findViewById(R.id.alert_text)
+        dangerBanner = findViewById(R.id.danger_banner)
+        dangerBannerText = findViewById(R.id.danger_banner_text)
         val btnDemo = findViewById<Button>(R.id.btn_demo_hazard)
         val btnAck = findViewById<Button>(R.id.btn_alert_ack)
+        val btnAiPlan = findViewById<Button>(R.id.btn_ai_plan)
 
         mapView.onCreate(savedInstanceState)
-
-        topSurvival.text = getString(R.string.survival_label, 100)
 
         // ---- 交互 ----
         btnDemo.setOnClickListener { toggleDemoHazard() }
         fabSos.setOnClickListener { sendSos() }
         btnAck.setOnClickListener { dismissAlarm() }
+        btnAiPlan.setOnClickListener { onAiPlan() }
 
         initTts()
         requestPermissionsIfNeeded()
@@ -154,6 +168,7 @@ class MainActivity : AppCompatActivity() {
         super.onDestroy()
         routeJob?.cancel()
         blinkJob?.cancel()
+        llmJob?.cancel()
         ble?.stop()
         udp?.stop()
         locationEngine.stop()
@@ -251,7 +266,7 @@ class MainActivity : AppCompatActivity() {
     private fun onLocationFix(fix: LocationFix) {
         lastFix = fix
         ensureMapController()?.let { c ->
-            c.setSelf(fix.point)
+            c.setSelf(fix.point, fix.bearing)
             if (!cameraMovedToUser) {
                 cameraMovedToUser = true
                 c.focusOn(fix.point, 16f)
@@ -271,14 +286,12 @@ class MainActivity : AppCompatActivity() {
         val report = RiskEngine.evaluate(fix.point, hazards)
         val c = controller ?: return
 
-        // 顶栏存活率
-        topSurvival.text = getString(R.string.survival_label, report.survival)
+        // 顶部风险状态灯（绿/黄/红；存活率仅作内部选路指标，不上屏）
         val riskColor = when {
             report.alertLevel == AlertLevel.LEVEL_2 -> ContextCompat.getColor(this, R.color.aix_red)
             report.alertLevel == AlertLevel.LEVEL_1 -> ContextCompat.getColor(this, R.color.aix_yellow)
             else -> ContextCompat.getColor(this, R.color.aix_green)
         }
-        topSurvival.setTextColor(riskColor)
         statusDot.backgroundTintList = ColorStateList.valueOf(riskColor)
 
         // 底部简报
@@ -295,8 +308,10 @@ class MainActivity : AppCompatActivity() {
         }
 
         if (report.alertLevel == AlertLevel.LEVEL_2) {
-            showAlarm(report)
-        } else if (alarmVisible) {
+            updateDangerBanner(report)
+            if (!alarmAcknowledged) showAlarm(report)
+            maybeAutoAiPlan()
+        } else {
             hideAlarm()
         }
 
@@ -313,10 +328,12 @@ class MainActivity : AppCompatActivity() {
     private fun planRoute(pos: GeoPoint, report: RiskReport) {
         routeJob?.cancel()
         lastPlanPos = pos
+        val zones = hazards.toList()
+        val sh = shelters.toList()
         routeJob = lifecycleScope.launch {
             val route = withContext(Dispatchers.Default) {
                 try {
-                    EvacRouter.route(pos, hazards.toList(), shelters.toList())
+                    routeOnRoads(pos, zones, sh)
                 } catch (e: Exception) {
                     null
                 }
@@ -336,6 +353,28 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /** 优先高德步行路线（沿真实道路、不穿楼）；失败回退栅格 A* */
+    private suspend fun routeOnRoads(
+        pos: GeoPoint,
+        zones: List<HazardZone>,
+        shelters: List<Shelter>,
+    ): EvacRoute? {
+        val target = EvacRouter.pickTarget(pos, zones, shelters) ?: return null
+        val road = amapRoutePlanner.walk(pos, target.position)
+        if (road != null && road.size >= 2) {
+            var length = 0.0
+            for (i in 1 until road.size) length += Geo.distanceM(road[i - 1], road[i])
+            return EvacRoute(
+                waypoints = road,
+                lengthM = length,
+                dangerPenalty = 0.0,
+                target = target.position,
+                targetName = target.name,
+            )
+        }
+        return EvacRouter.route(pos, zones, shelters)
+    }
+
     private fun describeReport(r: RiskReport): String = buildString {
         when {
             r.alertLevel == AlertLevel.LEVEL_2 && r.insideZone != null ->
@@ -353,6 +392,123 @@ class MainActivity : AppCompatActivity() {
         val dist = route.lengthM.roundToInt()
         val target = route.targetName
         return "逃生路线约 ${dist}m，前往「$target」，沿蓝色箭头行进"
+    }
+
+    // ================= LLM（DeepSeek）逃生规划增强 =================
+
+    /** 手动触发：底栏「AI 规划」按钮 */
+    private fun onAiPlan() {
+        val fix = lastFix
+        if (fix == null) {
+            toast("尚未定位，无法 AI 规划")
+            return
+        }
+        if (!DeepSeekClient.isConfigured()) {
+            txtAiAdvice.text = getString(R.string.ai_no_key)
+            txtAiAdvice.visibility = View.VISIBLE
+            toast(getString(R.string.ai_no_key))
+            return
+        }
+        if (aiPlanning) {
+            toast("AI 分析中，请稍候")
+            return
+        }
+        aiPlanning = true
+        txtAiAdvice.text = getString(R.string.ai_planning)
+        txtAiAdvice.visibility = View.VISIBLE
+
+        // 拷贝快照到 IO 协程，避免跨线程读写主线程状态
+        val pos = fix.point
+        val zones = hazards.toList()
+        val sh = shelters.toList()
+        val base = currentRoute
+
+        llmJob?.cancel()
+        llmJob = lifecycleScope.launch {
+            val plan = withContext(Dispatchers.IO) {
+                try {
+                    DeepSeekClient.plan(pos, zones, sh, base)
+                } catch (e: Exception) {
+                    logStatus("AI 规划失败: ${e.message}")
+                    null
+                }
+            }
+            aiPlanning = false
+            if (plan == null) {
+                txtAiAdvice.text = "AI 分析失败，已沿用本地路线"
+            } else {
+                applyAiPlan(plan)
+            }
+        }
+    }
+
+    private fun applyAiPlan(plan: LlmPlan) {
+        // AI 综合分析出了安全集合点 → 交给高德沿道路算路（按避灾途经点绕开灾区）
+        if (plan.target != null) planAiRoute(plan)
+
+        val sb = StringBuilder()
+        sb.append("AI 建议：").append(plan.analysis.ifBlank { "按危险最小原则撤离" })
+        val w = plan.warnings.filter { it.isNotBlank() }
+        if (w.isNotEmpty()) sb.append("\n").append(w.take(2).joinToString("；"))
+        txtAiAdvice.text = sb.toString()
+        txtAiAdvice.visibility = View.VISIBLE
+
+        speak("AI 规划：" + plan.analysis.ifBlank { "建议按危险最小原则撤离" })
+        lastAiPlanAt = System.currentTimeMillis()
+        logStatus("AI 规划完成，推荐目标: ${plan.recommendedTarget}")
+    }
+
+    /** AI 给出安全集合点 + 避灾途经点后，交给高德沿道路分段算路 */
+    private fun planAiRoute(plan: LlmPlan) {
+        val target = plan.target ?: return
+        val pos = lastFix?.point ?: DEFAULT_POS
+        val targetName = plan.recommendedTarget.ifBlank { "安全集合点" }
+
+        // 在地图上标出 AI 推荐的安全集合点
+        controller?.markTarget(target, targetName)
+
+        val corridor = ArrayList<GeoPoint>()
+        corridor.add(pos)
+        corridor.addAll(plan.waypoints)
+        corridor.add(target)
+
+        routeJob?.cancel()
+        routeJob = lifecycleScope.launch {
+            val route = withContext(Dispatchers.IO) {
+                try {
+                    val pts = amapRoutePlanner.walkThrough(corridor)
+                    if (pts != null && pts.size >= 2) {
+                        var len = 0.0
+                        for (i in 1 until pts.size) len += Geo.distanceM(pts[i - 1], pts[i])
+                        EvacRoute(waypoints = pts, lengthM = len, dangerPenalty = 0.0, target = target, targetName = targetName)
+                    } else null
+                } catch (e: Exception) {
+                    logStatus("AI 路线算路失败: ${e.message}")
+                    null
+                }
+            }
+            if (route != null) {
+                currentRoute = route
+                controller?.showRoute(route.waypoints)
+                controller?.fitPoints(listOf(pos) + route.waypoints)
+                txtGuidance.text = "AI 建议前往「${route.targetName}」，约 ${route.lengthM.roundToInt()}m（沿道路、已绕开灾情区）"
+            } else {
+                // 高德算路失败 → 画直线兜底
+                val direct = listOf(pos, target)
+                currentRoute = EvacRoute(waypoints = direct, lengthM = Geo.distanceM(pos, target), dangerPenalty = 0.0, target = target, targetName = targetName)
+                controller?.showRoute(direct)
+                controller?.fitPoints(direct)
+                txtGuidance.text = "AI 建议前往「$targetName」（高德路线暂不可用，显示直线方向）"
+                logStatus("AI 路线回退直线")
+            }
+        }
+    }
+
+    /** 仅在首次进入 L2 时自动分析一次；之后只靠「AI 规划」按钮手动触发 */
+    private fun maybeAutoAiPlan() {
+        if (autoAiDone || !DeepSeekClient.isConfigured() || aiPlanning) return
+        autoAiDone = true
+        onAiPlan()
     }
 
     // ================= 灾情数据 =================
@@ -416,6 +572,7 @@ class MainActivity : AppCompatActivity() {
             lastPlanPos = null // 强制重算
             currentRoute = null
             controller?.clearRoute()
+            txtAiAdvice.visibility = View.GONE
         }
     }
 
@@ -477,7 +634,7 @@ class MainActivity : AppCompatActivity() {
             alarmVisible = true
             alertOverlay.visibility = View.VISIBLE
             val t = report.insideZone ?: report.nearestZone
-            alertText.text = "${t?.kind?.cn ?: "危险区域"} · 存活率 ${report.survival}%\n请立刻沿逃生路线转移"
+            alertText.text = "${t?.kind?.cn ?: "危险区域"}，请立刻沿逃生路线转移"
             blink(alertOverlay)
             vibrateAlarm()
         }
@@ -485,18 +642,40 @@ class MainActivity : AppCompatActivity() {
 
     private fun dismissAlarm() {
         alarmVisible = false
+        alarmAcknowledged = true
         blinkJob?.cancel()
+        stopVibration()
         alertOverlay.alpha = 1f
         alertOverlay.visibility = View.GONE
     }
 
-    /** 险情解除时自动关闭告警（与手动确认同一套隐藏逻辑） */
-    private fun hideAlarm() = dismissAlarm()
+    /** 险情解除时自动关闭告警（重置确认状态，下次危险重新全屏告警） */
+    private fun hideAlarm() {
+        alarmVisible = false
+        alarmAcknowledged = false
+        blinkJob?.cancel()
+        stopVibration()
+        alertOverlay.alpha = 1f
+        alertOverlay.visibility = View.GONE
+        hideDangerBanner()
+    }
+
+    /** 危险悬浮盒（灵动岛式）：确认后持续显示，不遮挡地图 */
+    private fun updateDangerBanner(report: RiskReport) {
+        val t = report.insideZone ?: report.nearestZone
+        dangerBannerText.text = "危险 · ${t?.kind?.cn ?: "危险区域"}"
+        dangerBanner.visibility = View.VISIBLE
+    }
+
+    private fun hideDangerBanner() {
+        dangerBanner.visibility = View.GONE
+    }
 
     private fun clearRouteUi() {
         currentRoute = null
         lastPlanPos = null
         controller?.clearRoute()
+        txtAiAdvice.visibility = View.GONE
     }
 
     private fun blink(v: View) {
@@ -514,13 +693,18 @@ class MainActivity : AppCompatActivity() {
     private fun vibrateAlarm() {
         val vib = getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator ?: return
         if (Build.VERSION.SDK_INT >= 26) {
+            // repeat=-1：只振动一轮（约 2s）后自动停止，不再循环
             vib.vibrate(
-                VibrationEffect.createWaveform(longArrayOf(0, 400, 250, 400, 250, 800), 0)
+                VibrationEffect.createWaveform(longArrayOf(0, 400, 250, 400, 250, 800), -1)
             )
         } else {
             @Suppress("DEPRECATION")
-            vib.vibrate(longArrayOf(0, 400, 250, 400, 250, 800), 0)
+            vib.vibrate(longArrayOf(0, 400, 250, 400, 250, 800), -1)
         }
+    }
+
+    private fun stopVibration() {
+        (getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator)?.cancel()
     }
 
     private fun sendSos() {
