@@ -1,5 +1,5 @@
 /* ==========================================================================
-   AIxOrigin · Promo site interactions
+   AIxLife · Promo site interactions
    Zero dependencies: canvas mesh / constellation, IntersectionObserver
    scroll reveals, animated gauge & counters, interactive OLED / water / phone.
    ========================================================================== */
