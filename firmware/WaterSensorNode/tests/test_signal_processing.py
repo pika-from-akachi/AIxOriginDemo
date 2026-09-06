@@ -142,6 +142,13 @@ class DeploymentTests(unittest.TestCase):
         args = self.tool.command_args("COM99", "calibrate-point", 15)
         self.assertIn("capture_depth(15)", args[-1])
 
+    def test_manual_curve_preset_is_only_applied_explicitly(self):
+        deploy = self.tool.command_args("COM99", "deploy")
+        self.assertNotIn(self.tool.REMOTE_CURVE, deploy)
+        explicit = self.tool.command_args("COM99", "apply-curve-preset")
+        self.assertIn(self.tool.REMOTE_CURVE, explicit)
+        self.assertEqual(explicit[-1], "reset")
+
 
 if __name__ == "__main__":
     unittest.main()

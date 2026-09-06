@@ -155,6 +155,14 @@ python firmware/WaterSensorNode/tools/node.py --port COM4 calibrate-point 30
 每增加一个有效点，曲线都会更新。校验失败时继续使用原来的两点标定。BLE `flags` 的
 `0x20` 位表示曲线已启用。
 
+当前演示板使用的手动缩放预设位于 `presets/depth_curve_15000_21000.json`：0mm为0，
+5～30mm依次为15000、16324、17647、18971、20029、21000，对应百分比保持
+17%、33%、50%、67%、83%、100%。普通部署不会覆盖设备标定；需要明确应用该预设时执行：
+
+```bash
+python firmware/WaterSensorNode/tools/node.py --port COM4 apply-curve-preset
+```
+
 状态含义：
 
 - `NO CAL`：尚未完成标定。

@@ -1,0 +1,14 @@
+{
+  "gpio": 5,
+  "atten": "11DB",
+  "reference_depth_mm": 30,
+  "records": [
+    {"depth_mm": 0, "samples": [0]},
+    {"depth_mm": 5, "samples": [15000]},
+    {"depth_mm": 10, "samples": [16324]},
+    {"depth_mm": 15, "samples": [17647]},
+    {"depth_mm": 20, "samples": [18971]},
+    {"depth_mm": 25, "samples": [20029]},
+    {"depth_mm": 30, "samples": [21000]}
+  ]
+}

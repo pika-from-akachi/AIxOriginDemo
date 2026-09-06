@@ -5,6 +5,8 @@ import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
+CURVE_PRESET = ROOT / "presets" / "depth_curve_15000_21000.json"
+REMOTE_CURVE = ":water_depth_curve_gpio5_3cm.json"
 
 
 def command_args(port, action, state=None):
@@ -21,6 +23,8 @@ def command_args(port, action, state=None):
         args += ["exec", "from water_monitor import capture; capture(%r)" % state]
     elif action == "calibrate-point":
         args += ["exec", "from water_monitor import capture_depth; capture_depth(%d)" % state]
+    elif action == "apply-curve-preset":
+        args += ["fs", "cp", str(CURVE_PRESET), REMOTE_CURVE, "+", "reset"]
     elif action == "status":
         args += ["exec", "from water_monitor import WaterMonitor; m=WaterMonitor(); "
                  "m.update(); print(m.adc); print(m.last)"]
@@ -36,6 +40,10 @@ def main():
     sub.add_parser("deploy", help="Copy application files; does not erase or flash firmware")
     sub.add_parser("status", help="Read one live frame, then restart the application")
     sub.add_parser("reset")
+    sub.add_parser(
+        "apply-curve-preset",
+        help="Explicitly install the repository's 0-30mm manual curve",
+    )
     cal = sub.add_parser("calibrate", help="User must already hold the requested physical state")
     cal.add_argument("state", choices=("dry", "wet"))
     point = sub.add_parser(
